@@ -45,7 +45,15 @@
   .panel h2{font-size:13px; font-weight:600}
   .panel .meta{font-size:11.5px; color:var(--soft)}
   svg.chart{width:100%; height:170px; display:block; margin-top:8px}
+  svg.chart circle.pt{cursor:pointer}
   .axis{font-size:10px; fill:var(--soft)}
+  /* B: anomaly threshold slider */
+  .thresh{margin-top:14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .thresh label{font-size:12px; color:var(--muted); white-space:nowrap}
+  .thresh input[type=range]{flex:1; min-width:150px; accent-color:var(--accent)}
+  .thread{font-size:12px; color:var(--ink); white-space:nowrap}
+  .thread strong{color:var(--warn)}
+  .thbasis{flex-basis:100%; font-size:11px; color:var(--soft); margin-top:-4px}
   /* staged feature rows */
   .stage{display:flex; align-items:center; gap:11px; background:var(--card);
     border-radius:9px; padding:11px 14px; margin-top:10px; font-size:13px}
@@ -101,6 +109,16 @@
     <div class="meta" id="chartMeta">loading…</div>
     <svg class="chart" id="chart" viewBox="0 0 600 170" preserveAspectRatio="none" role="img"
          aria-label="River level over the recent window"></svg>
+    <!-- B: anomaly threshold slider — pure client-side re-flagging of the series -->
+    <div class="thresh">
+      <label for="thSlider">Anomaly threshold</label>
+      <input type="range" id="thSlider" min="0" max="1" step="0.01" value="1"
+             aria-label="Anomaly threshold">
+      <span class="thread"><strong id="thCount">0</strong>/<span id="thTotal">0</span>
+        readings flagged · <span id="thVal">—</span></span>
+      <div class="thbasis">Default = this station's typical-range-high (the level
+        it exceeds only ~5% of the time); drag to re-flag readings live.</div>
+    </div>
   </div>
 
   <!-- A: pipeline health panel (real run metadata from run_meta.json) -->
@@ -114,8 +132,7 @@
     <div class="hnote" id="hNote" hidden></div>
   </div>
 
-  <!-- B/C/D: staged honestly, not faked -->
-  <div class="stage"><span class="tag">B</span>Anomaly threshold slider<span class="soon">Weekend 4</span></div>
+  <!-- C/D: staged honestly, not faked (D is W7) -->
   <div class="stage"><span class="tag">C</span>Click-to-trace bronze, silver, gold<span class="soon">Weekend 5-7</span></div>
   <div class="stage"><span class="tag">D</span>Forecast toggle<span class="soon">Weekend 7</span></div>
 
@@ -183,6 +200,10 @@ function renderHealth(meta){
   }
 }
 
+// Chart state, kept so the anomaly slider (Feature B) can re-flag points without
+// a redraw and so a click can resolve back to a reading_id (Feature C).
+let CHART = null;
+
 function drawChart(points, unit){
   const svg = document.getElementById("chart");
   if(!points.length){ svg.innerHTML = ""; return; }
@@ -192,13 +213,62 @@ function drawChart(points, unit){
   const W=600,H=170,pad=14;
   const sx = t => pad + (W-2*pad)*((t-x0)/((x1-x0)||1));
   const sy = v => (H-pad) - (H-2*pad)*((v-y0)/((y1-y0)||1));
+  CHART = { points, unit, xs, sx, sy, W, H, pad, y0, y1 };
   let d = points.map((p,i)=> (i?"L":"M") + sx(xs[i]).toFixed(1) + "," + sy(ys[i]).toFixed(1)).join(" ");
-  const last = points[points.length-1];
+  // Transparent per-point hit circles: targets for the slider's flagging and for
+  // the click-to-trace (Feature C). Flagged markers and the guide line are filled
+  // in by applyThreshold().
+  const hits = points.map((p,i)=>
+    `<circle class="pt" data-i="${i}" cx="${sx(xs[i]).toFixed(1)}" cy="${sy(ys[i]).toFixed(1)}" r="5" fill="transparent"/>`
+  ).join("");
   svg.innerHTML =
+    `<line id="thLine" x1="${pad}" x2="${W-pad}" y1="0" y2="0" stroke="var(--warn)" ` +
+      `stroke-width="1" stroke-dasharray="4 3" opacity="0"/>` +
     `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>` +
+    `<g id="marks"></g>` + hits +
     `<circle cx="${sx(xs[xs.length-1]).toFixed(1)}" cy="${sy(ys[ys.length-1]).toFixed(1)}" r="4" fill="var(--accent)"/>`;
+  const last = points[points.length-1];
   document.getElementById("chartMeta").textContent =
     `${last.value} ${unit} · ${points.length} readings · range ${y0.toFixed(2)} to ${y1.toFixed(2)} ${unit}`;
+}
+
+// Feature B: re-flag every charted reading above `th`, client-side, live.
+function applyThreshold(th){
+  if(!CHART) return;
+  const { points, xs, sx, sy, unit, y0, y1 } = CHART;
+  let n = 0, marks = "";
+  points.forEach((p,i) => {
+    if(p.value > th){
+      n++;
+      marks += `<circle cx="${sx(xs[i]).toFixed(1)}" cy="${sy(p.value).toFixed(1)}" r="3.6" fill="var(--warn)"/>`;
+    }
+  });
+  document.getElementById("marks").innerHTML = marks;
+  // Guide line only when the threshold sits within the plotted range.
+  const line = document.getElementById("thLine");
+  if(th >= y0 && th <= y1){
+    const y = sy(th).toFixed(1);
+    line.setAttribute("y1", y); line.setAttribute("y2", y); line.setAttribute("opacity", "0.9");
+  } else {
+    line.setAttribute("opacity", "0");
+  }
+  document.getElementById("thCount").textContent = n;
+  document.getElementById("thTotal").textContent = points.length;
+  document.getElementById("thVal").textContent = th.toFixed(2) + " " + (unit || "");
+}
+
+// Seed the slider from the station's threshold (typicalRangeHigh, carried in
+// gold). Range spans the data up to that default so dragging left flags readings.
+function initThreshold(station){
+  if(!CHART) return;
+  const slider = document.getElementById("thSlider");
+  const th = station && station.threshold != null ? station.threshold : CHART.y1;
+  const lo = Math.floor(CHART.y0 * 10) / 10;
+  const hi = Math.max(Math.ceil(CHART.y1 * 10) / 10, th);
+  slider.min = lo; slider.max = hi; slider.step = 0.01;
+  slider.value = Math.min(Math.max(th, lo), hi);
+  slider.oninput = () => applyThreshold(parseFloat(slider.value));
+  applyThreshold(parseFloat(slider.value));
 }
 
 async function load(){
@@ -219,6 +289,7 @@ async function load(){
       document.getElementById("mChange").textContent = (c>0?"+":"") + (c==null?"n/a":c+" "+unit);
       const series = (gold.series||[]).filter(p=>p.station_reference===(primary.station_reference));
       drawChart(series, unit);
+      initThreshold(primary);
     }
     if(meta){
       document.getElementById("liveLabel").textContent = "updated " + fmtAgo(meta.last_run_utc);
