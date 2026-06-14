@@ -1,0 +1,9 @@
+/* Brand tokens shared with reecewall.dev. Source of truth is the portfolio's
+   packages/tokens; mirror values here, do not invent new colours or fonts. */
+:root{
+  --ink:#201d19; --muted:#76726b; --soft:#9a958c;
+  --accent:#0e5b54; --accent-deep:#0a4640;
+  --pill-bg:#ecf3f1; --pill-ink:#0f534c;
+  --hair:#e6e1d6; --paper:#fdfcf9; --card:#f4f1ea; --warn:#993c1d; --warn-bg:#faece7;
+  --forecast:#4a4ab7;   /* the forecast line (Feature D, wired at W7) */
+}

@@ -6,13 +6,8 @@
 <title>UK River Levels (live) · Reece Wall</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./tokens.css">
 <style>
-  :root{
-    --ink:#201d19; --muted:#76726b; --soft:#9a958c;
-    --accent:#0e5b54; --accent-deep:#0a4640;
-    --pill-bg:#ecf3f1; --pill-ink:#0f534c;
-    --hair:#e6e1d6; --paper:#fdfcf9; --card:#f4f1ea; --warn:#993c1d; --warn-bg:#faece7;
-  }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
     background:var(--paper); color:var(--ink); font-family:'Poppins',sans-serif;
@@ -97,11 +92,12 @@
 
   <!-- B/C/D: staged honestly, not faked -->
   <div class="stage"><span class="tag">B</span>Anomaly threshold slider<span class="soon">Weekend 4</span></div>
-  <div class="stage"><span class="tag">C</span>Click-to-trace bronze → silver → gold<span class="soon">Weekend 5–7</span></div>
+  <div class="stage"><span class="tag">C</span>Click-to-trace bronze, silver, gold<span class="soon">Weekend 5-7</span></div>
   <div class="stage"><span class="tag">D</span>Forecast toggle<span class="soon">Weekend 7</span></div>
 
   <footer id="attribution">
-    Built by Reece Wall · dbt + DuckDB on a free GitHub Actions schedule
+    this uses Environment Agency flood and river level data from the real-time
+    data API (Beta) · Built by Reece Wall · dbt + DuckDB on a free GitHub Actions schedule
   </footer>
 </div>
 
@@ -115,7 +111,7 @@ function fmtAgo(iso){
   return Math.round(mins/60) + " h ago";
 }
 
-function drawChart(points){
+function drawChart(points, unit){
   const svg = document.getElementById("chart");
   if(!points.length){ svg.innerHTML = ""; return; }
   const xs = points.map(p => new Date(p.date_time_utc).getTime());
@@ -130,7 +126,7 @@ function drawChart(points){
     `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>` +
     `<circle cx="${sx(xs[xs.length-1]).toFixed(1)}" cy="${sy(ys[ys.length-1]).toFixed(1)}" r="4" fill="var(--accent)"/>`;
   document.getElementById("chartMeta").textContent =
-    `${last.value} ${"m"} · ${points.length} readings · range ${y0.toFixed(2)}–${y1.toFixed(2)} m`;
+    `${last.value} ${unit} · ${points.length} readings · range ${y0.toFixed(2)} to ${y1.toFixed(2)} ${unit}`;
 }
 
 async function load(){
@@ -146,10 +142,11 @@ async function load(){
     const primary = stations.find(s=>s.station_reference===PRIMARY) || stations[0];
     if(primary){
       document.getElementById("chartTitle").textContent = primary.station_label || "River Trent";
+      const unit = primary.unit_name || "";
       const c = primary.change_24h;
-      document.getElementById("mChange").textContent = (c>0?"+":"") + (c==null?"n/a":c+" m");
+      document.getElementById("mChange").textContent = (c>0?"+":"") + (c==null?"n/a":c+" "+unit);
       const series = (gold.series||[]).filter(p=>p.station_reference===(primary.station_reference));
-      drawChart(series);
+      drawChart(series, unit);
     }
     if(meta){
       document.getElementById("liveLabel").textContent = "updated " + fmtAgo(meta.last_run_utc);
