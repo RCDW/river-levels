@@ -1,0 +1,53 @@
+name: ci
+
+# The gate for every PR: Python + SQL lint, and a dbt build + test that proves
+# the transform layer produces a queryable, tested artifact (not just that the
+# SQL compiles). Data comes from a deterministic fixture, never the live API.
+on:
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - name: ruff lint
+        run: ruff check .
+      - name: ruff format check
+        run: ruff format --check .
+
+  dbt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install toolchain
+        run: |
+          pip install -r ingest/requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Generate bronze fixture (deterministic, no live API)
+        run: python -m ci.make_bronze_fixture
+      - name: dbt build + test (data smoke test)
+        working-directory: transform
+        run: |
+          dbt deps
+          dbt seed --profiles-dir .
+          dbt run --profiles-dir .
+          dbt test --profiles-dir .
+      - name: sqlfluff lint
+        working-directory: transform
+        run: sqlfluff lint models

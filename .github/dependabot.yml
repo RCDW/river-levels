@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Python: the runtime ingest deps (ingest/) and the CI/dev toolchain (root).
+  # dbt-core is grouped with dbt-duckdb so a major can never land them apart.
+  - package-ecosystem: pip
+    directories:
+      - "/"
+      - "/ingest"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dbt:
+        patterns:
+          - "dbt-core"
+          - "dbt-duckdb"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

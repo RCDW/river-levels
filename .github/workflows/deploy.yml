@@ -1,0 +1,47 @@
+name: deploy
+
+# Deploys the static dashboard to S3 + CloudFront via GitHub OIDC (no stored
+# keys). Runs on merge to main that touches web/, plus a manual safety net.
+#
+# Requires three repo variables, set after the human runs `terraform apply`
+# (infra/ outputs them): DEPLOY_ROLE_ARN, SITE_BUCKET, CLOUDFRONT_DISTRIBUTION_ID,
+# and AWS_REGION. The shell (web/index.html, tokens.css) lives on main; the
+# published data (web/data) lives on the data branch and is pulled in below.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # request the OIDC token to assume the AWS role
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never interrupt an in-flight deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Pull published data from the data branch
+        run: |
+          if git fetch origin data --depth=1 2>/dev/null; then
+            git checkout origin/data -- web/data
+          else
+            echo "no data branch yet; deploying the shell only"
+          fi
+      - uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Sync site to S3 (idempotent)
+        run: aws s3 sync web/ "s3://${{ vars.SITE_BUCKET }}/" --delete
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"

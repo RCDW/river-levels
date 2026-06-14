@@ -1,0 +1,28 @@
+name: security-scan
+
+# OSV-Scanner gate over the dependency manifests. Runs on PRs, plus weekly so
+# new advisories on unchanged deps still surface. Accepted findings are
+# documented and time-boxed in osv-scanner.toml. upload-sarif is off, so this
+# is a pure pass/fail gate with no code-scanning dependency.
+on:
+  pull_request: {}
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  osv:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    with:
+      scan-args: |-
+        -r
+        --skip-git
+        ./
+      upload-sarif: false
