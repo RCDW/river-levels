@@ -41,3 +41,6 @@ jobs:
           scan-ref: infra
           severity: HIGH,CRITICAL
           exit-code: "1"
+          # Trivy only auto-loads .trivyignore from its working dir (repo root);
+          # ours lives with the Terraform, so point at it explicitly.
+          trivyignores: infra/.trivyignore
