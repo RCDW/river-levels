@@ -1,0 +1,23 @@
+[sqlfluff]
+dialect = duckdb
+templater = dbt
+max_line_length = 100
+# ST06/ST09: column- and join-order opinions we keep as authored.
+# RF04: the EA data column is literally named "value" (a keyword).
+exclude_rules = ST06, ST09, RF04
+
+# Config lives with the dbt project; run sqlfluff from this directory
+# (cd transform && sqlfluff lint models) so dbt resolves ../data correctly.
+[sqlfluff:templater:dbt]
+project_dir = .
+profiles_dir = .
+
+# The models are written in lower case; keep the linter consistent with that.
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = lower

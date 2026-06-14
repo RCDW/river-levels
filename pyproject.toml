@@ -1,0 +1,10 @@
+# Python tooling for the ingest and publish steps (and the W6 Azure Function
+# scaffold). The transform/ layer is dbt SQL, linted separately by sqlfluff,
+# so ruff only ever sees the .py files here.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, warnings, isort, pyupgrade, flake8-bugbear.
+select = ["E", "F", "W", "I", "UP", "B"]
