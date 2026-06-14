@@ -14,18 +14,21 @@ models:
       - name: parameter
         tests:
           - accepted_values:
-              values: ["level", "flow", "temperature", "wind", "rainfall"]
+              arguments:
+                values: ["level", "flow", "temperature", "wind", "rainfall"]
               config:
                 severity: warn   # warn, don't fail, if the EA adds a parameter
       - name: quality_flag
         tests:
           - accepted_values:
-              values: ["ok", "missing", "out_of_range"]
+              arguments:
+                values: ["ok", "missing", "out_of_range"]
       - name: station_reference
         description: Should resolve to a known station in the seed.
         tests:
           - relationships:
-              to: ref('dim_stations')
-              field: station_reference
+              arguments:
+                to: ref('dim_stations')
+                field: station_reference
               config:
                 severity: warn
