@@ -10,22 +10,24 @@ API reference: https://environment.data.gov.uk/flood-monitoring/doc/reference
 Open Government Licence v3.0. Attribution required:
   "this uses Environment Agency flood and river level data from the real-time data API (Beta)"
 """
+
 from __future__ import annotations
 
 import datetime as dt
 import hashlib
-from dataclasses import dataclass, asdict
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
 
 import requests
 
 ROOT = "https://environment.data.gov.uk/flood-monitoring"
 ATTRIBUTION = (
-    "this uses Environment Agency flood and river level data "
-    "from the real-time data API (Beta)"
+    "this uses Environment Agency flood and river level data from the real-time data API (Beta)"
 )
 _SESSION = requests.Session()
-_SESSION.headers.update({"User-Agent": "reecewall.dev river-portfolio (contact: rcdwall@gmail.com)"})
+_SESSION.headers.update(
+    {"User-Agent": "reecewall.dev river-portfolio (contact: rcdwall@gmail.com)"}
+)
 
 
 def _get(url: str, params: dict | None = None) -> dict:
@@ -63,7 +65,9 @@ def discover_stations(search: str = "Trent", town: str | None = None) -> list[di
                 "status": s.get("status"),
                 # typicalRangeHigh = level exceeded only ~5% of the time on record:
                 # a sensible *data-driven* default anomaly threshold (Feature B).
-                "typical_range_high": (scale.get("typicalRangeHigh") if isinstance(scale, dict) else None),
+                "typical_range_high": (
+                    scale.get("typicalRangeHigh") if isinstance(scale, dict) else None
+                ),
             }
         )
     return out
@@ -76,25 +80,27 @@ def mint_reading_id(measure: str | None, date_time: str | None) -> str:
     """The trace key. Minted ONCE here at ingest as md5(measure|dateTime) and
     carried UNCHANGED through bronze -> silver -> gold (it is what makes
     Feature C, click-to-trace, exact). Never regenerate it downstream."""
-    return hashlib.md5(f"{measure}|{date_time}".encode("utf-8")).hexdigest()
+    return hashlib.md5(f"{measure}|{date_time}".encode()).hexdigest()
 
 
 @dataclass
 class Reading:
     # Natural key of a reading is (measure, date_time). The measure URI encodes
     # station + parameter + qualifier + interval + unit, so it is stable.
-    reading_id: str         # md5(measure|date_time), minted here, carried unchanged
+    reading_id: str  # md5(measure|date_time), minted here, carried unchanged
     measure: str
     station_reference: str | None
     station_label: str | None
     parameter: str | None
     qualifier: str | None
     unit_name: str | None
-    date_time: str          # ISO8601, as returned
-    value: float | None     # None when the API omits it (NaN readings)
+    date_time: str  # ISO8601, as returned
+    value: float | None  # None when the API omits it (NaN readings)
 
 
-def fetch_station_readings(station_reference: str, since_iso: str, limit: int = 10000) -> list[Reading]:
+def fetch_station_readings(
+    station_reference: str, since_iso: str, limit: int = 10000
+) -> list[Reading]:
     """
     Pull readings for one station since `since_iso` (exclusive), newest first.
     `_view=full` inlines the measure description + station label so a single
@@ -145,9 +151,9 @@ def fetch_many(station_refs: Iterable[str], since_iso: str) -> list[dict]:
 
 
 def utc_now_iso() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def since_hours_ago(hours: int) -> str:
-    t = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=hours)
+    t = dt.datetime.now(dt.UTC) - dt.timedelta(hours=hours)
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")

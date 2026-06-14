@@ -12,9 +12,10 @@ select
     s.date_time_utc,
     s.value,
     s.unit_name
-from {{ ref('stg_river_readings') }} s
-where s.parameter = 'level'
-  and s.qualifier = 'Stage'
-  and s.quality_flag = 'ok'
-  and s.date_time_utc >= current_timestamp - interval 30 day
+from {{ ref('stg_river_readings') }} as s
+where
+    s.parameter = 'level'
+    and s.qualifier = 'Stage'
+    and s.quality_flag = 'ok'
+    and s.date_time_utc >= current_timestamp - interval 30 day
 order by s.station_reference, s.date_time_utc

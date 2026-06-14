@@ -11,7 +11,8 @@ with stage as (
 ),
 
 latest as (
-    select *,
+    select
+        *,
         row_number() over (partition by measure order by date_time_utc desc) as rn
     from stage
 ),
@@ -21,13 +22,14 @@ value_24h_ago as (
         l.measure,
         (
             select s2.value
-            from stage s2
-            where s2.measure = l.measure
-              and s2.date_time_utc <= l.date_time_utc - interval 24 hour
+            from stage as s2
+            where
+                s2.measure = l.measure
+                and s2.date_time_utc <= l.date_time_utc - interval 24 hour
             order by s2.date_time_utc desc
             limit 1
         ) as value_24h_ago
-    from latest l
+    from latest as l
     where l.rn = 1
 )
 
@@ -37,13 +39,13 @@ select
     l.station_label,
     l.measure,
     l.unit_name,
-    l.date_time_utc                        as latest_at,
-    l.value                                as latest_value,
+    l.date_time_utc as latest_at,
+    l.value as latest_value,
     v.value_24h_ago,
-    round(l.value - v.value_24h_ago, 3)    as change_24h,
+    round(l.value - v.value_24h_ago, 3) as change_24h,
     coalesce(d.threshold_m, d.typical_range_high) as threshold,
     (l.value > coalesce(d.threshold_m, d.typical_range_high)) as above_threshold
-from latest l
-left join value_24h_ago v on v.measure = l.measure
-left join {{ ref('dim_stations') }} d on d.station_reference = l.station_reference
+from latest as l
+left join value_24h_ago as v on v.measure = l.measure
+left join {{ ref('dim_stations') }} as d on d.station_reference = l.station_reference
 where l.rn = 1

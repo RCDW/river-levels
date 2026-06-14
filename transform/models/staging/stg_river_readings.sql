@@ -15,17 +15,19 @@ with raw as (
         parameter,
         qualifier,
         unit_name,
-        cast(date_time as timestamp)            as date_time_utc,
-        try_cast(value as double)               as value,
-        cast(_ingested_at as timestamp)         as ingested_at,
-        _source_batch_id                        as source_batch_id
+        cast(date_time as timestamp) as date_time_utc,
+        try_cast(value as double) as value,
+        cast(_ingested_at as timestamp) as ingested_at,
+        _source_batch_id as source_batch_id
     from {{ source('bronze', 'readings') }}
-    where measure is not null
-      and date_time is not null
+    where
+        measure is not null
+        and date_time is not null
 ),
 
 deduped as (
-    select *,
+    select
+        *,
         row_number() over (
             partition by reading_id
             order by ingested_at desc
@@ -45,8 +47,8 @@ flagged as (
         date_time_utc,
         value,
         case
-            when value is null                              then 'missing'
-            when value < -50 or value > 50                  then 'out_of_range'  -- mASD/mAOD sanity bound
+            when value is null then 'missing'
+            when value < -50 or value > 50 then 'out_of_range'  -- mASD/mAOD sanity bound
             else 'ok'
         end as quality_flag,
         ingested_at,

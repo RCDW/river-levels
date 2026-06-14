@@ -10,6 +10,7 @@ serves from the CDN.
 Only ever runs after `dbt test` passes (see the workflow), so the artifacts
 committed are always last-known-good.
 """
+
 from __future__ import annotations
 
 import json
@@ -53,9 +54,9 @@ def main() -> int:
     # --- health panel metadata (Feature A) ------------------------------- #
     rows = con.sql("select count(*) from stg_river_readings").fetchone()[0]
     n_stations = con.sql("select count(*) from gold_station_latest").fetchone()[0]
-    n_above = con.sql(
-        "select count(*) from gold_station_latest where above_threshold"
-    ).fetchone()[0]
+    n_above = con.sql("select count(*) from gold_station_latest where above_threshold").fetchone()[
+        0
+    ]
 
     ingest_meta = {}
     p = OUT / "ingest_meta.json"

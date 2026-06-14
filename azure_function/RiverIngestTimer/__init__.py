@@ -7,6 +7,7 @@ Blob on time" monitoring story).
 Consumption plan: timer executions sit within the free monthly grant.
 Set app settings: BLOB_CONN_STR, BRONZE_CONTAINER (e.g. "bronze").
 """
+
 import datetime as dt
 import io
 import json
@@ -23,7 +24,9 @@ from ingest import ea_client as ea
 
 
 def _load_station_refs() -> list[str]:
-    cfg = yaml.safe_load(open(os.path.join(os.path.dirname(__file__), "..", "config", "stations.yml")))
+    cfg = yaml.safe_load(
+        open(os.path.join(os.path.dirname(__file__), "..", "config", "stations.yml"))
+    )
     return [s["station_reference"] for s in cfg["stations"]]
 
 
@@ -43,7 +46,7 @@ def main(timer: func.TimerRequest) -> None:
 
     bsc = BlobServiceClient.from_connection_string(os.environ["BLOB_CONN_STR"])
     container = os.environ.get("BRONZE_CONTAINER", "bronze")
-    day = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    day = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d")
     blob_path = f"bronze/dt={day}/batch_{run_ts.replace(':', '').replace('-', '')}.parquet"
 
     buf = io.BytesIO()
