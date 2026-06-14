@@ -1,42 +1,35 @@
-# 5. Per-PR preview environments via subdomain isolation
+# 5. Per-PR isolation via a scoped dbt schema
 
-- **Status:** Accepted
-- **Date:** 2026-06-12
+- **Status:** Accepted (deferred; not built in W1-W3)
+- **Date:** 2026-06-14
 
 ## Context
 
-For a presentational site, reviewing rendered reality per PR is more valuable
-than reviewing a diff. We want a live, isolated preview for every PR — isolated
-from production and from other PRs — without running a long-lived staging
-environment.
+The hub deploys every PR to an isolated `pr-N.preview.reecewall.dev` site,
+because for a presentational site, reviewing rendered reality beats reviewing a
+diff. A data pipeline is different: what a reviewer needs to trust is that the
+PR's models **build and pass tests**, not that a second copy of a static site
+renders. Standing up per-PR S3 sites here would be cost and moving parts for
+little value.
 
 ## Decision
 
-Deploy every PR to **`pr-N.preview.reecewall.dev`** on a stack fully separate
-from prod:
+When per-PR isolation is added, do it as a **scoped dbt schema/target**, not an
+S3 site: `dbt build --target pr_<n>` into a per-PR schema, run `dbt test`, and
+drop the schema when the PR closes. This is the data analog of the hub's
+subdomain isolation: the same "isolated, disposable, per-PR" idea expressed in
+the warehouse rather than at the edge.
 
-- **Separate bucket + CloudFront distribution**, sharing nothing writable with
-  production. A wildcard certificate (`*.preview.reecewall.dev`) covers all PRs.
-- **One bucket, per-PR key prefixes.** A CloudFront **viewer-request function**
-  maps the `pr-N` subdomain to the `/pr-N/*` key prefix, with SPA fallback to
-  that PR's `index.html`. The build needs no per-PR config — the edge applies
-  the prefix.
-- **Least-privilege deploy role.** A separate OIDC role scoped to the preview
-  bucket and distribution only; it physically cannot write to or invalidate
-  production.
-- **Fork-safe.** Fork PRs get no OIDC token, so the deploy job skips cleanly
-  rather than failing — own-repo branches only.
-- **Lifecycle.** Deploy syncs to `pr-N/` (with scoped `--delete`), invalidates
-  and **waits** for completion so downstream checks hit live content, and posts
-  a sticky PR comment; a close-triggered job tears the prefix down.
+**Deferred for W1-W3.** The CI gate already builds and tests every PR against a
+deterministic fixture on one shared target, which is sufficient while the model
+set is small. The per-PR schema is the shape to reach for when models grow or
+when previewing real per-PR data becomes worthwhile.
 
 ## Consequences
 
-- **+** Every PR is a real, isolated, reviewable environment — and the place
-  where the deployed-artifact smoke test and Lighthouse run.
-- **+** Blast radius is contained: the preview role can't touch prod, and per-PR
-  prefixes isolate PRs from each other.
-- **+** No long-lived staging environment to maintain — previews are ephemeral.
-- **−** Preview routing, certificate, and teardown are bespoke moving parts.
-  Mitigated by the preview workflow self-testing on every PR (it is not
-  paths-filtered, so it exercises itself).
+- **+** Records the intended approach, so it is a deliberate step rather than a
+  default to the per-PR sites copied from the hub.
+- **+** No preview infrastructure (buckets, wildcard cert, edge routing) to build
+  or pay for now; the hub's preview stack was dropped from this repo's Terraform.
+- **-** Until built, PRs share one CI build target, so two PRs cannot preview
+  divergent data simultaneously. Acceptable at this scale.

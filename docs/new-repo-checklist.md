@@ -61,8 +61,7 @@ build can be green and still render a blank page.
 - [ ] **[universal]** Build/typecheck gate.
 - [ ] **[web]** **Smoke test**: serve the production build and load it in a real
       browser, asserting it actually mounts and logs no errors (see
-      [ADR 0006](adr/0006-peer-dependency-gate.md) and the Playwright smoke
-      test). Run it against the deployed preview too.
+      the hub's Playwright smoke test). Run it against the deployed preview too.
       → **data**: make **`dbt build` + `dbt test`** the gate — assert the
       pipeline produced a **queryable, tested** artifact (models materialised,
       tests/freshness passing), not merely that the SQL compiled. This is the
@@ -80,7 +79,8 @@ build can be green and still render a blank page.
       on, a major split resolves against the old version and is baked into the
       lockfile as "satisfied", and `--frozen-lockfile` never re-checks peers — so
       **assert installed versions directly** rather than trusting peer
-      resolution ([ADR 0006](adr/0006-peer-dependency-gate.md)).
+      resolution. The data analog of this assert-don't-re-derive lesson is
+      [ADR 0012](adr/0012-reading-id-at-ingest.md).
 
 ## 6. Infrastructure as code + its gates
 

@@ -5,7 +5,7 @@
 
 ## Context
 
-The forces at play — technical, product, constraints — and the problem that
+The forces at play (technical, product, constraints) and the problem that
 needs deciding. State it neutrally, before the choice.
 
 ## Decision
