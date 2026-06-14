@@ -52,6 +52,23 @@
   .tag{font-size:10px; font-weight:600; color:var(--pill-ink); background:var(--pill-bg);
     padding:2px 9px; border-radius:20px; white-space:nowrap}
   .stage .soon{margin-left:auto; font-size:11px; color:var(--soft)}
+  /* A: pipeline health panel */
+  .health .h{display:flex; align-items:center; justify-content:space-between; gap:10px}
+  .health .h h2{display:flex; align-items:center; gap:8px}
+  .hstatus{font-size:11px; color:var(--live-ink); background:var(--live-bg);
+    padding:3px 10px; border-radius:20px; white-space:nowrap}
+  .hstatus.stale{color:var(--warn); background:var(--warn-bg)}
+  .hgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:13px}
+  .hcell .k{font-size:11px; color:var(--muted)}
+  .hcell .v{font-family:'Lora',serif; font-size:19px; font-weight:600; margin-top:1px}
+  .hstages{display:flex; flex-wrap:wrap; gap:7px; margin-top:13px}
+  .chip{font-size:11px; color:var(--live-ink); background:var(--live-bg);
+    padding:3px 9px; border-radius:20px; display:inline-flex; align-items:center; gap:6px}
+  .chip.bad{color:var(--warn); background:var(--warn-bg)}
+  .chip .cd{width:5px; height:5px; border-radius:50%; background:var(--live-dot)}
+  .chip.bad .cd{background:var(--warn)}
+  .hnote{font-size:11.5px; color:var(--warn); margin-top:11px}
+  @media(max-width:560px){.hgrid{grid-template-columns:1fr 1fr}}
   footer{margin-top:30px; font-size:11px; color:var(--soft); text-align:center; line-height:1.7}
   @media(max-width:560px){.metrics{grid-template-columns:1fr 1fr}.head{flex-direction:column}}
 </style>
@@ -86,9 +103,16 @@
          aria-label="River level over the recent window"></svg>
   </div>
 
-  <!-- A: health panel (wired to run_meta) -->
-  <div class="stage"><span class="tag">A</span><strong>Pipeline health</strong>
-    <span id="health" style="color:var(--muted)">checking…</span></div>
+  <!-- A: pipeline health panel (real run metadata from run_meta.json) -->
+  <div class="panel health">
+    <div class="h">
+      <h2>Pipeline health <span class="tag">A</span></h2>
+      <span class="hstatus" id="hStatus">checking…</span>
+    </div>
+    <div class="hgrid" id="hGrid"></div>
+    <div class="hstages" id="hStages"></div>
+    <div class="hnote" id="hNote" hidden></div>
+  </div>
 
   <!-- B/C/D: staged honestly, not faked -->
   <div class="stage"><span class="tag">B</span>Anomaly threshold slider<span class="soon">Weekend 4</span></div>
@@ -109,6 +133,54 @@ function fmtAgo(iso){
   const mins = Math.round((Date.now() - new Date(iso)) / 60000);
   if(mins < 60) return mins + " min ago";
   return Math.round(mins/60) + " h ago";
+}
+
+// Feature A: render the real run metadata into the health panel. The pipeline
+// publishes only after a green dbt test (last-known-good), so a failed run never
+// overwrites this — when the latest run failed, the panel keeps showing the last
+// good run and flags it as stale. Cron is every 3 h; allow one missed run.
+const STALE_MIN = 360;
+
+function renderHealth(meta){
+  const status = document.getElementById("hStatus");
+  const mins = meta.last_run_utc ? Math.round((Date.now() - new Date(meta.last_run_utc)) / 60000) : null;
+  const stale = mins != null && mins > STALE_MIN;
+  status.textContent = stale ? "stale" : "last-known-good";
+  status.classList.toggle("stale", stale);
+
+  const tests = meta.tests_total != null ? `${meta.tests_passed}/${meta.tests_total}` : "n/a";
+  const cells = [
+    ["Updated", fmtAgo(meta.last_run_utc)],
+    ["Rows processed", meta.silver_rows != null ? meta.silver_rows.toLocaleString() : "n/a"],
+    ["Stations", meta.stations != null ? String(meta.stations) : "n/a"],
+    ["Tests passed", tests],
+  ];
+  const grid = document.getElementById("hGrid");
+  grid.textContent = "";
+  for(const [k, v] of cells){
+    const cell = document.createElement("div"); cell.className = "hcell";
+    const kEl = document.createElement("div"); kEl.className = "k"; kEl.textContent = k;
+    const vEl = document.createElement("div"); vEl.className = "v"; vEl.textContent = v;
+    cell.append(kEl, vEl); grid.append(cell);
+  }
+
+  const stages = document.getElementById("hStages");
+  stages.textContent = "";
+  for(const s of (meta.stages || [])){
+    const chip = document.createElement("span");
+    chip.className = "chip" + (s.status === "ok" ? "" : " bad");
+    const dot = document.createElement("span"); dot.className = "cd";
+    chip.append(dot, document.createTextNode(s.name));
+    stages.append(chip);
+  }
+
+  const note = document.getElementById("hNote");
+  note.hidden = !stale;
+  if(stale){
+    note.textContent =
+      `Last successful run was ${fmtAgo(meta.last_run_utc)}. The scheduled refresh ` +
+      `runs every 3 h, so this may be stale — showing last-known-good data.`;
+  }
 }
 
 function drawChart(points, unit){
@@ -150,14 +222,13 @@ async function load(){
     }
     if(meta){
       document.getElementById("liveLabel").textContent = "updated " + fmtAgo(meta.last_run_utc);
-      document.getElementById("health").textContent =
-        `last run ${fmtAgo(meta.last_run_utc)} · ${meta.silver_rows?.toLocaleString()} rows · status ${meta.status}`;
+      renderHealth(meta);
       if(meta.attribution) document.getElementById("attribution").textContent =
         meta.attribution + " · Built by Reece Wall · dbt + DuckDB on a free schedule";
     }
   }catch(e){
     document.getElementById("chartMeta").textContent = "data not available yet";
-    document.getElementById("health").textContent = "no successful run yet";
+    document.getElementById("hStatus").textContent = "no successful run yet";
   }
 }
 load();
