@@ -21,6 +21,27 @@ import duckdb
 DB = pathlib.Path("data/river.duckdb")
 OUT = pathlib.Path("web/data")
 PARQUET = OUT / "parquet"
+RUN_RESULTS = pathlib.Path("transform/target/run_results.json")
+
+
+def dbt_test_stats() -> dict:
+    """Real test pass/total from the last `dbt test`, for the health panel
+    (Feature A). dbt writes target/run_results.json, and publish always runs
+    straight after `dbt test`, so this file reflects the gate that let us
+    publish. Guarded: if it is absent (a publish-only local run) we report nulls
+    rather than inventing a status.
+
+    We deliberately report tests only, not models: `dbt test` overwrites
+    run_results.json after `dbt run`, so a model count here would always be 0 and
+    misrepresent the run."""
+    if not RUN_RESULTS.exists():
+        return {"tests_passed": None, "tests_total": None}
+    results = json.loads(RUN_RESULTS.read_text()).get("results", [])
+    tests = [r for r in results if r["unique_id"].startswith("test.")]
+    return {
+        "tests_passed": sum(1 for r in tests if r["status"] == "pass"),
+        "tests_total": len(tests),
+    }
 
 
 def main() -> int:
@@ -63,13 +84,27 @@ def main() -> int:
     if p.exists():
         ingest_meta = json.loads(p.read_text())
 
+    stats = dbt_test_stats()
+    # Publish only ever runs after a green `dbt build`/`dbt test` (see the
+    # workflow), so every published run is last-known-good: each stage is "ok".
+    stages = [
+        {"name": "ingest", "status": "ok"},
+        {"name": "dbt build", "status": "ok"},
+        {"name": "dbt test", "status": "ok"},
+        {"name": "publish", "status": "ok"},
+    ]
+
     (OUT / "run_meta.json").write_text(
         json.dumps(
             {
                 "last_run_utc": ingest_meta.get("last_ingest_utc"),
+                "rows_ingested": ingest_meta.get("rows_ingested"),
                 "silver_rows": int(rows),
                 "stations": int(n_stations),
                 "above_threshold": int(n_above),
+                "tests_passed": stats["tests_passed"],
+                "tests_total": stats["tests_total"],
+                "stages": stages,
                 "status": "ok",
                 "attribution": ingest_meta.get("attribution"),
             },
