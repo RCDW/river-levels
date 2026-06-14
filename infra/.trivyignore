@@ -7,9 +7,9 @@
 # Triaged 2026-06-11; full cost rationale in the PR that introduced this gate.
 
 # HIGH: CloudFront distribution does not use a WAF.
-# A brochure site has nothing to protect behind a WAF (no auth, forms, or user
-# data). AWS WAF would add ~$10-15/mo across the prod + preview distributions
-# for no meaningful risk reduction. Accepted.
+# A public dashboard has nothing to protect behind a WAF (no auth, forms, or
+# user data). AWS WAF would add ~$10-15/mo on the distribution for no
+# meaningful risk reduction. Accepted.
 AVD-AWS-0011
 
 # HIGH: S3 bucket not encrypted with a customer-managed KMS key.

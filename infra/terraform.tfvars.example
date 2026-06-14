@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored) before running `terraform apply`.
+# No secrets here; the Cloudflare token comes from the CLOUDFLARE_API_TOKEN
+# environment variable at apply time.
+aws_region                = "eu-west-2"
+domain_name               = "live.reecewall.dev"
+cloudflare_zone_name      = "reecewall.dev"
+subject_alternative_names = []
+github_repo               = "RCDW/river-levels"
+github_branch             = "main"
