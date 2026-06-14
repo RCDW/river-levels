@@ -14,6 +14,7 @@ committed are always last-known-good.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 import duckdb
@@ -22,6 +23,10 @@ DB = pathlib.Path("data/river.duckdb")
 OUT = pathlib.Path("web/data")
 PARQUET = OUT / "parquet"
 RUN_RESULTS = pathlib.Path("transform/target/run_results.json")
+# Bronze stays external Parquet (never collapsed into the db) so it can be queried
+# as its own layer. Matches transform/models/sources.yml; publish runs from the
+# repo root, hence the root-relative default. W6 swaps this for an Azure Blob URL.
+BRONZE_GLOB = os.environ.get("BRONZE_GLOB", "data/bronze/**/*.parquet")
 
 
 def dbt_test_stats() -> dict:
@@ -42,6 +47,76 @@ def dbt_test_stats() -> dict:
         "tests_passed": sum(1 for r in tests if r["status"] == "pass"),
         "tests_total": len(tests),
     }
+
+
+def emit_lineage(con: duckdb.DuckDBPyConnection) -> None:
+    """Pre-computed bronze -> silver -> gold lineage for every plotted reading_id
+    (Feature C v1). Keyed by reading_id — the trace key minted at ingest and
+    carried unchanged, never re-derived here. Each layer is queried independently:
+    bronze straight from the append-only Parquet, silver and gold from their
+    tables, so the dedup story (bronze may hold >1 copy; silver kept the latest)
+    is real, not asserted.
+
+    The payload shape is exactly what W7 will reproduce from a live DuckDB-WASM
+    query, so that upgrade swaps the *source*, not the front-end."""
+    gold = con.sql(
+        "select reading_id, station_reference, station_label, "
+        "date_time_utc, value, unit_name from gold_series"
+    ).df()
+    gold["date_time_utc"] = gold["date_time_utc"].astype(str)
+
+    silver = con.sql(
+        "select reading_id, value, quality_flag, ingested_at "
+        "from stg_river_readings "
+        "where reading_id in (select reading_id from gold_series)"
+    ).df()
+    silver["ingested_at"] = silver["ingested_at"].astype(str)
+    silver_by_id = {r["reading_id"]: r for r in json.loads(silver.to_json(orient="records"))}
+
+    # Raw copies per reading_id, oldest first — exposes the normally-invisible
+    # duplicate ingests that silver dedupes away.
+    bronze = con.sql(
+        "select b.reading_id, b.value, b._ingested_at as ingested_at, "
+        "b._source_batch_id as source_batch_id "
+        f"from read_parquet('{BRONZE_GLOB}', union_by_name=true, filename=true) b "
+        "where b.reading_id in (select reading_id from gold_series) "
+        "order by b.reading_id, b._ingested_at"
+    ).df()
+    bronze_by_id: dict[str, list] = {}
+    for rec in json.loads(bronze.to_json(orient="records")):
+        bronze_by_id.setdefault(rec["reading_id"], []).append(
+            {
+                "value": rec["value"],
+                "ingested_at": rec["ingested_at"],
+                "source_batch_id": rec["source_batch_id"],
+            }
+        )
+
+    lineage = {}
+    for g in json.loads(gold.to_json(orient="records")):
+        rid = g["reading_id"]
+        copies = bronze_by_id.get(rid, [])
+        s = silver_by_id.get(rid)
+        lineage[rid] = {
+            "reading_id": rid,
+            "station_reference": g["station_reference"],
+            "station_label": g["station_label"],
+            "date_time_utc": g["date_time_utc"],
+            "bronze": {"copies": len(copies), "records": copies},
+            "silver": (
+                {
+                    "value": s["value"],
+                    "quality_flag": s["quality_flag"],
+                    "ingested_at": s["ingested_at"],
+                }
+                if s
+                else None
+            ),
+            "gold": {"value": g["value"], "unit_name": g["unit_name"]},
+        }
+
+    (OUT / "lineage.json").write_text(json.dumps(lineage))
+    print(f"[publish] lineage.json written ({len(lineage)} readings)")
 
 
 def main() -> int:
@@ -111,6 +186,9 @@ def main() -> int:
             indent=2,
         )
     )
+    # --- pre-computed click-to-trace lineage (Feature C v1) -------------- #
+    emit_lineage(con)
+
     print("[publish] gold.json, parquet/, run_meta.json written")
     return 0
 
