@@ -1,0 +1,15 @@
+name: river_portfolio
+version: "1.0.0"
+config-version: 2
+profile: river_portfolio
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+
+models:
+  river_portfolio:
+    staging:
+      +materialized: table     # silver kept as a TABLE (not ephemeral) so it
+                               # stays individually queryable -> enables Feature C
+    marts:
+      +materialized: table

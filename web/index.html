@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UK River Levels (live) · Reece Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#201d19; --muted:#76726b; --soft:#9a958c;
+    --accent:#0e5b54; --accent-deep:#0a4640;
+    --pill-bg:#ecf3f1; --pill-ink:#0f534c;
+    --hair:#e6e1d6; --paper:#fdfcf9; --card:#f4f1ea; --warn:#993c1d; --warn-bg:#faece7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--paper); color:var(--ink); font-family:'Poppins',sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(circle at 1px 1px, rgba(14,91,84,.04) 1px, transparent 0);
+    background-size:22px 22px;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:42px 22px 60px}
+  /* nav */
+  nav{display:flex; justify-content:space-between; align-items:center; margin-bottom:34px}
+  .word{font-family:'Lora',serif; font-size:20px; font-weight:600}
+  nav .links{display:flex; gap:20px; font-size:13.5px; color:#5f5b54}
+  nav .links a{color:inherit; text-decoration:none}
+  nav .links a:hover{color:var(--accent)}
+  /* header */
+  .head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px}
+  h1{font-family:'Lora',serif; font-size:30px; font-weight:600; line-height:1.05}
+  .sub{color:var(--muted); font-size:13px; margin-top:5px}
+  .badge{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:#0f6e56;
+    background:#e1f5ee; padding:5px 11px; border-radius:20px; white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:#1d9e75;
+    animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(29,158,117,.5)}70%{box-shadow:0 0 0 7px rgba(29,158,117,0)}100%{box-shadow:0 0 0 0 rgba(29,158,117,0)}}
+  /* metric cards */
+  .metrics{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:24px 0 8px}
+  .metric{background:var(--card); border-radius:10px; padding:14px 16px;
+    opacity:0; transform:translateY(8px); animation:rise .5s forwards}
+  .metric:nth-child(2){animation-delay:.08s} .metric:nth-child(3){animation-delay:.16s}
+  @keyframes rise{to{opacity:1; transform:none}}
+  .metric .k{font-size:12px; color:var(--muted)}
+  .metric .v{font-family:'Lora',serif; font-size:26px; font-weight:600; margin-top:2px}
+  .metric.alert{background:var(--warn-bg)} .metric.alert .k,.metric.alert .v{color:var(--warn)}
+  /* chart */
+  .panel{background:#fff; border:0.5px solid var(--hair); border-radius:12px; padding:18px 20px; margin-top:14px}
+  .panel h2{font-size:13px; font-weight:600}
+  .panel .meta{font-size:11.5px; color:var(--soft)}
+  svg.chart{width:100%; height:170px; display:block; margin-top:8px}
+  .axis{font-size:10px; fill:var(--soft)}
+  /* staged feature rows */
+  .stage{display:flex; align-items:center; gap:11px; background:var(--card);
+    border-radius:9px; padding:11px 14px; margin-top:10px; font-size:13px}
+  .tag{font-size:10px; font-weight:600; color:var(--pill-ink); background:var(--pill-bg);
+    padding:2px 9px; border-radius:20px; white-space:nowrap}
+  .stage .soon{margin-left:auto; font-size:11px; color:var(--soft)}
+  footer{margin-top:30px; font-size:11px; color:var(--soft); text-align:center; line-height:1.7}
+  @media(max-width:560px){.metrics{grid-template-columns:1fr 1fr}.head{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <span class="word">Reece&nbsp;Wall</span>
+    <span class="links"><a href="/">Work</a><a href="/cv">CV</a><a href="/about">About</a></span>
+  </nav>
+
+  <div class="head">
+    <div>
+      <h1>UK River Levels (live)</h1>
+      <div class="sub">Environment Agency open data · River Trent, Nottingham</div>
+    </div>
+    <span class="badge"><span class="dot"></span><span id="liveLabel">live</span></span>
+  </div>
+
+  <!-- 3-second demo: headline metrics -->
+  <div class="metrics" id="metrics">
+    <div class="metric"><div class="k">Stations</div><div class="v" id="mStations">n/a</div></div>
+    <div class="metric"><div class="k">24h change</div><div class="v" id="mChange">n/a</div></div>
+    <div class="metric alert"><div class="k">Above threshold</div><div class="v" id="mAbove">n/a</div></div>
+  </div>
+
+  <!-- 3-second demo: the chart -->
+  <div class="panel">
+    <h2 id="chartTitle">River Trent at Nottingham</h2>
+    <div class="meta" id="chartMeta">loading…</div>
+    <svg class="chart" id="chart" viewBox="0 0 600 170" preserveAspectRatio="none" role="img"
+         aria-label="River level over the recent window"></svg>
+  </div>
+
+  <!-- A: health panel (wired to run_meta) -->
+  <div class="stage"><span class="tag">A</span><strong>Pipeline health</strong>
+    <span id="health" style="color:var(--muted)">checking…</span></div>
+
+  <!-- B/C/D: staged honestly, not faked -->
+  <div class="stage"><span class="tag">B</span>Anomaly threshold slider<span class="soon">Weekend 4</span></div>
+  <div class="stage"><span class="tag">C</span>Click-to-trace bronze → silver → gold<span class="soon">Weekend 5–7</span></div>
+  <div class="stage"><span class="tag">D</span>Forecast toggle<span class="soon">Weekend 7</span></div>
+
+  <footer id="attribution">
+    Built by Reece Wall · dbt + DuckDB on a free GitHub Actions schedule
+  </footer>
+</div>
+
+<script>
+const PRIMARY = "4009"; // Colwick, the pinned primary chart station ref
+
+function fmtAgo(iso){
+  if(!iso) return "unknown";
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  if(mins < 60) return mins + " min ago";
+  return Math.round(mins/60) + " h ago";
+}
+
+function drawChart(points){
+  const svg = document.getElementById("chart");
+  if(!points.length){ svg.innerHTML = ""; return; }
+  const xs = points.map(p => new Date(p.date_time_utc).getTime());
+  const ys = points.map(p => p.value);
+  const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+  const W=600,H=170,pad=14;
+  const sx = t => pad + (W-2*pad)*((t-x0)/((x1-x0)||1));
+  const sy = v => (H-pad) - (H-2*pad)*((v-y0)/((y1-y0)||1));
+  let d = points.map((p,i)=> (i?"L":"M") + sx(xs[i]).toFixed(1) + "," + sy(ys[i]).toFixed(1)).join(" ");
+  const last = points[points.length-1];
+  svg.innerHTML =
+    `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>` +
+    `<circle cx="${sx(xs[xs.length-1]).toFixed(1)}" cy="${sy(ys[ys.length-1]).toFixed(1)}" r="4" fill="var(--accent)"/>`;
+  document.getElementById("chartMeta").textContent =
+    `${last.value} ${"m"} · ${points.length} readings · range ${y0.toFixed(2)}–${y1.toFixed(2)} m`;
+}
+
+async function load(){
+  try{
+    const [gold, meta] = await Promise.all([
+      fetch("./data/gold.json").then(r=>r.json()),
+      fetch("./data/run_meta.json").then(r=>r.json()).catch(()=>null)
+    ]);
+    const stations = gold.stations || [];
+    document.getElementById("mStations").textContent = stations.length || "n/a";
+    const above = stations.filter(s=>s.above_threshold).length;
+    document.getElementById("mAbove").textContent = above;
+    const primary = stations.find(s=>s.station_reference===PRIMARY) || stations[0];
+    if(primary){
+      document.getElementById("chartTitle").textContent = primary.station_label || "River Trent";
+      const c = primary.change_24h;
+      document.getElementById("mChange").textContent = (c>0?"+":"") + (c==null?"n/a":c+" m");
+      const series = (gold.series||[]).filter(p=>p.station_reference===(primary.station_reference));
+      drawChart(series);
+    }
+    if(meta){
+      document.getElementById("liveLabel").textContent = "updated " + fmtAgo(meta.last_run_utc);
+      document.getElementById("health").textContent =
+        `last run ${fmtAgo(meta.last_run_utc)} · ${meta.silver_rows?.toLocaleString()} rows · status ${meta.status}`;
+      if(meta.attribution) document.getElementById("attribution").textContent =
+        meta.attribution + " · Built by Reece Wall · dbt + DuckDB on a free schedule";
+    }
+  }catch(e){
+    document.getElementById("chartMeta").textContent = "data not available yet";
+    document.getElementById("health").textContent = "no successful run yet";
+  }
+}
+load();
+</script>
+</body>
+</html>

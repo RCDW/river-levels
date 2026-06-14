@@ -1,0 +1,62 @@
+name: river-pipeline
+
+# W3: the whole pipeline runs in Actions (free). W6 moves *ingest* to an Azure
+# Function + Blob; this workflow then just runs dbt + publish against Blob.
+on:
+  schedule:
+    - cron: "0 */3 * * *"     # every 3 hours
+  workflow_dispatch: {}        # manual run button
+
+permissions:
+  contents: write              # to push built artifacts to the data branch
+
+concurrency:
+  group: river-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install -r ingest/requirements.txt
+          pip install dbt-duckdb duckdb
+
+      # 1) INGEST -> append-only bronze parquet
+      - name: Ingest (EA API -> bronze)
+        run: python -m ingest.run_ingest
+
+      # 2) TRANSFORM -> silver + gold in DuckDB
+      - name: dbt build
+        working-directory: transform
+        run: |
+          dbt deps
+          dbt seed --profiles-dir .
+          dbt run  --profiles-dir .
+          dbt test --profiles-dir .     # if this fails, the job stops here ->
+                                        # nothing is published -> last-known-good preserved
+
+      # 3) PUBLISH -> gold.json + parquet + run_meta for the front-end
+      - name: Publish artifacts
+        run: python publish/export.py
+
+      # 4) Commit built data to the `data` branch (keeps `main` history human)
+      - name: Push to data branch
+        run: |
+          git config user.name  "river-bot"
+          git config user.email "bot@reecewall.dev"
+          git add -f web/data data/bronze
+          git stash
+          git fetch origin data || true
+          git switch -C data
+          git stash pop || true
+          git add -f web/data data/bronze
+          git commit -m "data: scheduled refresh $(date -u +%FT%TZ)" || echo "no changes"
+          git push -f origin data

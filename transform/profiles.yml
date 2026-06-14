@@ -1,0 +1,11 @@
+# For local dev this can live here or in ~/.dbt/profiles.yml.
+# DuckDB needs no server: the whole warehouse is one file.
+river_portfolio:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "../data/river.duckdb"
+      extensions:
+        - httpfs        # lets DuckDB read parquet over http/Azure Blob (W6)
+      threads: 4

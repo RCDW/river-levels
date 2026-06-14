@@ -1,0 +1,35 @@
+# Trivy misconfiguration suppressions for infra/.
+#
+# Each entry below is a deliberate, documented decision for THIS context: a
+# public static-site portfolio (S3 + CloudFront) with no auth, forms, logins,
+# or sensitive data. Suppressing them keeps the gate green on accepted trade-
+# offs while STILL failing CI on any new misconfiguration not listed here.
+# Triaged 2026-06-11; full cost rationale in the PR that introduced this gate.
+
+# HIGH: CloudFront distribution does not use a WAF.
+# A brochure site has nothing to protect behind a WAF (no auth, forms, or user
+# data). AWS WAF would add ~$10-15/mo across the prod + preview distributions
+# for no meaningful risk reduction. Accepted.
+AVD-AWS-0011
+
+# HIGH: S3 bucket not encrypted with a customer-managed KMS key.
+# The buckets serve PUBLIC website assets; default SSE-S3 (AES256) is already
+# on. A customer-managed KMS key adds key-management cost and request fees for
+# zero confidentiality benefit on content that is, by design, public. Accepted.
+AVD-AWS-0132
+
+# MEDIUM: S3 bucket versioning not enabled.
+# Bucket contents are build artifacts, fully redeployable from git + CI. Git is
+# the source of truth, not the bucket, so versioning adds storage cost without
+# protecting anything irreplaceable. Accepted.
+AVD-AWS-0090
+
+# MEDIUM: CloudFront access logging not enabled.
+# Adds a logging bucket and storage cost; a personal portfolio has no audit or
+# analytics requirement that justifies it. Accepted.
+AVD-AWS-0010
+
+# LOW: S3 bucket server access logging not enabled.
+# Same rationale as CloudFront logging: public static assets, low audit value,
+# avoids an extra log bucket. Accepted.
+AVD-AWS-0089
