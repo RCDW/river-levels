@@ -1,0 +1,8 @@
+# OSV-Scanner accepted findings. Each entry MUST carry a reason and an
+# ignoreUntil date, so accepted risk is documented and time-boxed: CI fails
+# again once the date passes, forcing a re-review. No findings accepted today.
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2026-12-31
+# reason = "Not reachable here because <why>; tracked in #NN."
