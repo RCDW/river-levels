@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Raw EA readings, landed append-only as Parquet. Defined as an external
+      source so the layer stays independently queryable for Feature C: the
+      parquet files are never collapsed into a downstream table.
+    schema: main
+    tables:
+      - name: readings
+        description: One row per (measure, dateTime) as pulled from the API.
+        meta:
+          # In W3 this glob is local. In W6 it becomes an Azure Blob URL, e.g.
+          #   az://<container>/bronze/**/*.parquet   (read via httpfs + secret)
+          external_location: "read_parquet('{{ env_var('BRONZE_GLOB', '../data/bronze/**/*.parquet') }}', union_by_name=true, filename=true)"
+        columns:
+          - name: reading_id
+            description: >
+              Trace key, minted at ingest as md5(measure|dateTime) and carried
+              unchanged into silver and gold. Never regenerated downstream.
+          - name: measure
+            description: Measure URI, the stable natural key (station+param+qualifier+interval+unit).
+          - name: date_time
+            description: ISO8601 reading timestamp.
+          - name: value
+            description: Reading value; null when the API omitted it (NaN reading).

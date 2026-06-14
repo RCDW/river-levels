@@ -1,0 +1,21 @@
+# Pinned River Trent / Nottingham stations.
+# Populate by running once:  python -m ingest.run_ingest --discover
+# then paste the chosen stationReference values below. Do NOT hard-code IDs
+# you haven't verified against the live API. Discover them.
+#
+# typical_range_high (from the station's stageScale.typicalRangeHigh) is the
+# data-driven default anomaly threshold; the dbt seed falls back if null.
+
+lookback_hours: 6   # cron runs every 3h; 6h window tolerates one missed run
+
+# Discovered 2026-06-14 via `--discover` + a riverName=River Trent / town=Nottingham
+# query against the live API. All four expose a level/Stage measure in mASD.
+stations:
+  - station_reference: "4009"    # Colwick (Holme Pierrepont), the Nottingham reach gauge
+    note: "primary chart station"
+  - station_reference: "4126"    # Clifton Bridge (West Bridgford), second Nottingham gauge
+    note: "Nottingham reach"
+  - station_reference: "4007"    # Shardlow, upstream context
+    note: "upstream context"
+  - station_reference: "4022"    # North Muskham, downstream context
+    note: "downstream context"

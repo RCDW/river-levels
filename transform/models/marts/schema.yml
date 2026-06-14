@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: gold_series
+    description: "Gold: plotted chart series; reading_id retained for trace."
+    columns:
+      - name: reading_id
+        tests: [not_null]
+      - name: value
+        tests: [not_null]
+
+  - name: gold_station_latest
+    description: "Gold: per-station latest value, 24h change, threshold flag."
+    columns:
+      - name: station_reference
+        tests: [not_null, unique]
+      - name: latest_value
+        tests: [not_null]

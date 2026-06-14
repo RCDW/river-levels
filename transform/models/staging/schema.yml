@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_river_readings
+    description: "Silver: cleaned, deduped, flagged river readings."
+    columns:
+      - name: reading_id
+        description: "md5(measure|dateTime) minted at ingest, carried unchanged. The trace key for Feature C."
+        tests:
+          - not_null
+          - unique
+      - name: date_time_utc
+        tests: [not_null]
+      - name: parameter
+        tests:
+          - accepted_values:
+              values: ["level", "flow", "temperature", "wind", "rainfall"]
+              config:
+                severity: warn   # warn, don't fail, if the EA adds a parameter
+      - name: quality_flag
+        tests:
+          - accepted_values:
+              values: ["ok", "missing", "out_of_range"]
+      - name: station_reference
+        description: Should resolve to a known station in the seed.
+        tests:
+          - relationships:
+              to: ref('dim_stations')
+              field: station_reference
+              config:
+                severity: warn
