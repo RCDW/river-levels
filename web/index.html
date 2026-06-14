@@ -76,7 +76,24 @@
   .chip .cd{width:5px; height:5px; border-radius:50%; background:var(--live-dot)}
   .chip.bad .cd{background:var(--warn)}
   .hnote{font-size:11.5px; color:var(--warn); margin-top:11px}
-  @media(max-width:560px){.hgrid{grid-template-columns:1fr 1fr}}
+  /* C: click-to-trace cards */
+  .trace .h{display:flex; align-items:center; justify-content:space-between; gap:10px}
+  .trace .h h2{display:flex; align-items:center; gap:8px}
+  .tmeta{font-size:10.5px; color:var(--soft); font-family:ui-monospace,monospace;
+    word-break:break-all; max-width:52%; text-align:right}
+  .tcards{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:13px}
+  .tcard{background:var(--card); border-radius:10px; padding:12px 13px}
+  .tcard-h{display:flex; align-items:baseline; gap:8px; margin-bottom:8px}
+  .tcard-h strong{font-family:'Lora',serif; font-size:14px}
+  .tsub{font-size:10.5px; color:var(--soft)}
+  .kv{display:flex; justify-content:space-between; gap:10px; font-size:11.5px;
+    padding:3px 0; border-top:0.5px solid var(--hair)}
+  .kv:first-of-type{border-top:0}
+  .kk{color:var(--muted); white-space:nowrap}
+  .vv{color:var(--ink); text-align:right; word-break:break-all}
+  .tnote{font-size:11.5px; color:var(--muted); margin-top:12px; line-height:1.5}
+  @media(max-width:560px){.hgrid{grid-template-columns:1fr 1fr}
+    .tcards{grid-template-columns:1fr} .tmeta{max-width:100%}}
   footer{margin-top:30px; font-size:11px; color:var(--soft); text-align:center; line-height:1.7}
   @media(max-width:560px){.metrics{grid-template-columns:1fr 1fr}.head{flex-direction:column}}
 </style>
@@ -121,6 +138,17 @@
     </div>
   </div>
 
+  <!-- C: click-to-trace bronze -> silver -> gold (pre-computed lineage.json) -->
+  <div class="panel trace" id="tracePanel">
+    <div class="h">
+      <h2>Click-to-trace <span class="tag">C</span></h2>
+      <span class="tmeta" id="traceMeta"></span>
+    </div>
+    <div class="tcards" id="traceCards"></div>
+    <div class="tnote" id="traceNote">Click any point on the chart to trace that
+      reading through bronze &rarr; silver &rarr; gold.</div>
+  </div>
+
   <!-- A: pipeline health panel (real run metadata from run_meta.json) -->
   <div class="panel health">
     <div class="h">
@@ -132,8 +160,7 @@
     <div class="hnote" id="hNote" hidden></div>
   </div>
 
-  <!-- C/D: staged honestly, not faked (D is W7) -->
-  <div class="stage"><span class="tag">C</span>Click-to-trace bronze, silver, gold<span class="soon">Weekend 5-7</span></div>
+  <!-- D: staged honestly, not faked (forecast toggle is W7) -->
   <div class="stage"><span class="tag">D</span>Forecast toggle<span class="soon">Weekend 7</span></div>
 
   <footer id="attribution">
@@ -226,7 +253,8 @@ function drawChart(points, unit){
       `stroke-width="1" stroke-dasharray="4 3" opacity="0"/>` +
     `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>` +
     `<g id="marks"></g>` + hits +
-    `<circle cx="${sx(xs[xs.length-1]).toFixed(1)}" cy="${sy(ys[ys.length-1]).toFixed(1)}" r="4" fill="var(--accent)"/>`;
+    `<circle cx="${sx(xs[xs.length-1]).toFixed(1)}" cy="${sy(ys[ys.length-1]).toFixed(1)}" ` +
+      `r="4" fill="var(--accent)" pointer-events="none"/>`;
   const last = points[points.length-1];
   document.getElementById("chartMeta").textContent =
     `${last.value} ${unit} · ${points.length} readings · range ${y0.toFixed(2)} to ${y1.toFixed(2)} ${unit}`;
@@ -271,6 +299,81 @@ function initThreshold(station){
   applyThreshold(parseFloat(slider.value));
 }
 
+// Feature C: lazy-load the pre-computed lineage once, on first point click. The
+// promise is cached so concurrent clicks share one fetch. W7 swaps this source
+// for a live DuckDB-WASM query against the layer Parquet; the cards don't change.
+let lineagePromise = null;
+function getLineage(){
+  if(!lineagePromise) lineagePromise = fetch("./data/lineage.json").then(r=>r.json());
+  return lineagePromise;
+}
+
+// Build via createElement + textContent only — never innerHTML of data values.
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text != null) e.textContent = String(text);
+  return e;
+}
+function kv(k, v){
+  const row = el("div", "kv");
+  row.append(el("span", "kk", k), el("span", "vv", v == null ? "—" : v));
+  return row;
+}
+function traceCard(title, sub){
+  const c = el("div", "tcard");
+  const head = el("div", "tcard-h");
+  head.append(el("strong", null, title), el("span", "tsub", sub));
+  c.append(head);
+  return c;
+}
+
+async function showTrace(i){
+  const p = CHART && CHART.points[i];
+  if(!p) return;
+  const rid = p.reading_id;
+  const cards = document.getElementById("traceCards");
+  const note = document.getElementById("traceNote");
+  const meta = document.getElementById("traceMeta");
+  cards.textContent = ""; meta.textContent = ""; note.textContent = "loading trace…";
+
+  let lin;
+  try { lin = (await getLineage())[rid]; }
+  catch(e){ note.textContent = "trace data not available yet"; return; }
+  if(!lin){ note.textContent = "no lineage recorded for this reading"; return; }
+  meta.textContent = "reading_id " + rid;
+
+  const b = lin.bronze;
+  const bronze = traceCard("Bronze", "raw, append-only");
+  bronze.append(kv("ingested copies", b.copies));
+  b.records.forEach(r => bronze.append(kv(r.ingested_at, r.value)));
+
+  const silver = traceCard("Silver", "cleaned + deduped");
+  if(lin.silver){
+    silver.append(
+      kv("value", lin.silver.value),
+      kv("quality", lin.silver.quality_flag),
+      kv("kept ingest", lin.silver.ingested_at),
+    );
+  } else {
+    silver.append(kv("", "no silver row"));
+  }
+
+  const gold = traceCard("Gold", "plotted");
+  gold.append(
+    kv("value", lin.gold.value + " " + (lin.gold.unit_name || "")),
+    kv("time", lin.date_time_utc),
+  );
+
+  cards.append(bronze, silver, gold);
+  note.textContent = b.copies > 1
+    ? `Ingested ${b.copies}× into bronze by overlapping refreshes; silver kept the ` +
+      `latest copy and dropped the rest. That dedup is the normally-invisible ` +
+      `work the pipeline does on every reading.`
+    : `Ingested once into bronze and carried through unchanged — reading_id is the ` +
+      `same key across all three layers, never re-derived.`;
+}
+
 async function load(){
   try{
     const [gold, meta] = await Promise.all([
@@ -302,6 +405,15 @@ async function load(){
     document.getElementById("hStatus").textContent = "no successful run yet";
   }
 }
+
+// Delegated click: a chart point traces its reading (Feature C).
+document.getElementById("chart").addEventListener("click", e => {
+  const t = e.target;
+  if(t.classList && t.classList.contains("pt")){
+    showTrace(parseInt(t.getAttribute("data-i"), 10));
+  }
+});
+
 load();
 </script>
 </body>
