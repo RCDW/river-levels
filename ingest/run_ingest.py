@@ -13,6 +13,7 @@ Usage:
     python -m ingest.run_ingest --hours 48      # custom backfill window
     python -m ingest.run_ingest --discover      # print candidate stations & exit
 """
+
 from __future__ import annotations
 
 import argparse
