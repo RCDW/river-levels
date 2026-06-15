@@ -1,6 +1,6 @@
 # 13. Click-to-trace v1: pre-computed lineage JSON, DuckDB-WASM later
 
-- **Status:** Accepted
+- **Status:** Superseded by 0017
 - **Date:** 2026-06-14
 
 ## Context

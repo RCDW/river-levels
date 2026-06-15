@@ -92,6 +92,7 @@
   .kk{color:var(--muted); white-space:nowrap}
   .vv{color:var(--ink); text-align:right; word-break:break-all}
   .tnote{font-size:11.5px; color:var(--muted); margin-top:12px; line-height:1.5}
+  .tengine{font-size:10.5px; color:var(--soft); margin-top:11px}
   @media(max-width:560px){.hgrid{grid-template-columns:1fr 1fr}
     .tcards{grid-template-columns:1fr} .tmeta{max-width:100%}}
   footer{margin-top:30px; font-size:11px; color:var(--soft); text-align:center; line-height:1.7}
@@ -138,13 +139,16 @@
     </div>
   </div>
 
-  <!-- C: click-to-trace bronze -> silver -> gold (pre-computed lineage.json) -->
+  <!-- C: click-to-trace bronze -> silver -> gold. Real DuckDB-WASM SQL in the
+       browser over the layer Parquet, by reading_id; pre-computed lineage.json
+       is kept as a graceful fallback when the engine can't load. -->
   <div class="panel trace" id="tracePanel">
     <div class="h">
       <h2>Click-to-trace <span class="tag">C</span></h2>
       <span class="tmeta" id="traceMeta"></span>
     </div>
     <div class="tcards" id="traceCards"></div>
+    <div class="tengine" id="engineState"></div>
     <div class="tnote" id="traceNote">Click any point on the chart to trace that
       reading through bronze &rarr; silver &rarr; gold.</div>
   </div>
@@ -299,9 +303,10 @@ function initThreshold(station){
   applyThreshold(parseFloat(slider.value));
 }
 
-// Feature C: lazy-load the pre-computed lineage once, on first point click. The
-// promise is cached so concurrent clicks share one fetch. W7 swaps this source
-// for a live DuckDB-WASM query against the layer Parquet; the cards don't change.
+// Feature C fallback: the pre-computed lineage (Feature C v1), lazy-loaded once
+// on first use and cached so concurrent clicks share one fetch. Used only when
+// the live DuckDB-WASM engine below can't load (unsupported browser, etc.); the
+// cards are rendered the same either way.
 let lineagePromise = null;
 function getLineage(){
   if(!lineagePromise){
@@ -333,20 +338,73 @@ function traceCard(title, sub){
   return c;
 }
 
-async function showTrace(i){
-  const p = CHART && CHART.points[i];
-  if(!p) return;
-  const rid = p.reading_id;
+// Feature C: lazy-init DuckDB-WASM on first trace only, so the 3-second demo
+// paints before the engine (and its WASM runtime) is ever fetched. The version
+// is pinned; the layer Parquet is registered for HTTP range reads, so a query
+// pulls only the bytes it needs, not whole files. Served same-origin from
+// /data/parquet/, so there is no CORS to manage.
+let dbConn = null;
+async function getConn(){
+  if(dbConn) return dbConn;
+  const es = document.getElementById("engineState");
+  if(es) es.textContent = "loading query engine…";
+  const duckdb = await import("https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm");
+  const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+  const workerUrl = URL.createObjectURL(
+    new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }));
+  const worker = new Worker(workerUrl);
+  const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
+  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  URL.revokeObjectURL(workerUrl);
+  const abs = p => new URL(p, location.href).href;
+  for(const layer of ["bronze", "silver", "gold_series"]){
+    await db.registerFileURL(`${layer}.parquet`, abs(`./data/parquet/${layer}.parquet`),
+      duckdb.DuckDBDataProtocol.HTTP, false);
+  }
+  dbConn = await db.connect();
+  if(es) es.textContent = "query engine ready · live SQL over the layer Parquet";
+  return dbConn;
+}
+
+// Run the three layer queries by reading_id and shape the result like
+// lineage.json, so the same renderer draws the cards. The id is sanitised to
+// md5 hex AND bound as a prepared-statement parameter (belt and braces); the
+// timestamps are CAST to VARCHAR in SQL so they match the v1 string format.
+async function traceViaWasm(rid){
+  const conn = await getConn();
+  const run = async (sql) => {
+    const stmt = await conn.prepare(sql);
+    try { return (await stmt.query(rid)).toArray().map(r => r.toJSON()); }
+    finally { await stmt.close(); }
+  };
+  const bronze = await run(
+    "SELECT value, CAST(_ingested_at AS VARCHAR) AS ingested_at, " +
+    "_source_batch_id AS source_batch_id FROM read_parquet('bronze.parquet') " +
+    "WHERE reading_id = ? ORDER BY _ingested_at");
+  const silver = await run(
+    "SELECT value, quality_flag, CAST(ingested_at AS VARCHAR) AS ingested_at " +
+    "FROM read_parquet('silver.parquet') WHERE reading_id = ?");
+  const gold = await run(
+    "SELECT value, unit_name, CAST(date_time_utc AS VARCHAR) AS date_time_utc " +
+    "FROM read_parquet('gold_series.parquet') WHERE reading_id = ?");
+  if(!bronze.length && !silver.length && !gold.length) return null;
+  const g = gold[0] || {}, s = silver[0] || null;
+  return {
+    reading_id: rid,
+    date_time_utc: g.date_time_utc,
+    bronze: { copies: bronze.length, records: bronze },
+    silver: s ? { value: s.value, quality_flag: s.quality_flag, ingested_at: s.ingested_at } : null,
+    gold: gold.length ? { value: g.value, unit_name: g.unit_name } : null,
+  };
+}
+
+// One renderer for both the live and the fallback path, so the cards are
+// identical regardless of source. Values go in via the safe DOM helpers above.
+function renderTrace(lin, rid){
   const cards = document.getElementById("traceCards");
   const note = document.getElementById("traceNote");
-  const meta = document.getElementById("traceMeta");
-  cards.textContent = ""; meta.textContent = ""; note.textContent = "loading trace…";
-
-  let lin;
-  try { lin = (await getLineage())[rid]; }
-  catch(e){ note.textContent = "trace data not available yet"; return; }
-  if(!lin){ note.textContent = "no lineage recorded for this reading"; return; }
-  meta.textContent = "reading_id " + rid;
+  document.getElementById("traceMeta").textContent = "reading_id " + rid;
+  cards.textContent = "";
 
   const b = lin.bronze;
   const bronze = traceCard("Bronze", "raw, append-only");
@@ -366,7 +424,7 @@ async function showTrace(i){
 
   const gold = traceCard("Gold", "plotted");
   gold.append(
-    kv("value", lin.gold.value + " " + (lin.gold.unit_name || "")),
+    kv("value", (lin.gold ? lin.gold.value : "n/a") + " " + ((lin.gold && lin.gold.unit_name) || "")),
     kv("time", lin.date_time_utc),
   );
 
@@ -377,6 +435,36 @@ async function showTrace(i){
       `work the pipeline does on every reading.`
     : `Ingested once into bronze and carried through unchanged; reading_id is the ` +
       `same key across all three layers, never re-derived.`;
+}
+
+async function showTrace(i){
+  const p = CHART && CHART.points[i];
+  if(!p) return;
+  const rid = p.reading_id;
+  const note = document.getElementById("traceNote");
+  document.getElementById("traceCards").textContent = "";
+  document.getElementById("traceMeta").textContent = "";
+  note.textContent = "loading trace…";
+
+  // reading_id is an md5 hex; strip anything else before it ever reaches SQL.
+  const safe = String(rid || "").replace(/[^a-f0-9]/gi, "");
+  if(!safe){ note.textContent = "no reading id for this point"; return; }
+
+  try {
+    const lin = await traceViaWasm(safe);
+    if(!lin){ note.textContent = "no rows found for this reading"; return; }
+    renderTrace(lin, safe);
+  } catch(err){
+    // Graceful degradation: fall back to the pre-computed lineage (Feature C v1).
+    console.warn("live trace unavailable, falling back to lineage.json", err);
+    const es = document.getElementById("engineState");
+    if(es) es.textContent = "live engine unavailable · using pre-computed lineage";
+    try {
+      const lin = (await getLineage())[rid];
+      if(!lin){ note.textContent = "no lineage recorded for this reading"; return; }
+      renderTrace(lin, rid);
+    } catch(e2){ note.textContent = "trace data not available yet"; }
+  }
 }
 
 async function load(){
