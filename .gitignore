@@ -36,3 +36,11 @@ infra/crash.*.log
 infra/*.tfvars.json
 infra/.terraform/
 infra/terraform.tfvars
+# Terraform (Azure module) - separate state, same hygiene
+infra/azure/.terraform/
+infra/azure/*.tfstate
+infra/azure/*.tfstate.*
+infra/azure/crash.log
+infra/azure/crash.*.log
+infra/azure/*.tfvars
+infra/azure/*.tfvars.json
