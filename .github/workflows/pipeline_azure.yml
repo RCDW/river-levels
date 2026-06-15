@@ -60,6 +60,19 @@ jobs:
       - name: Create local warehouse dir
         run: mkdir -p data
 
+      # The DuckDB azure extension uses libcurl on Linux and here fails to locate
+      # the CA bundle ("Problem with the SSL CA cert"); it works locally on
+      # Windows via the OS cert store. Point the standard OpenSSL/curl env at
+      # Ubuntu's bundle (inherited by the dbt + publish steps via GITHUB_ENV), and
+      # mirror it to the RHEL-style path some libcurl builds expect.
+      - name: CA certs for the DuckDB azure extension
+        run: |
+          echo "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" >> "$GITHUB_ENV"
+          echo "SSL_CERT_DIR=/etc/ssl/certs"                      >> "$GITHUB_ENV"
+          echo "CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt" >> "$GITHUB_ENV"
+          sudo mkdir -p /etc/pki/tls/certs
+          sudo cp /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt
+
       # 1) TRANSFORM -> silver + gold, reading bronze from ADLS via the azure target
       - name: dbt build (reads bronze from ADLS)
         working-directory: transform
