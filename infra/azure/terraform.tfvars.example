@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (gitignored) before running `terraform apply`.
+# Storage/workspace names must be GLOBALLY UNIQUE - change these.
+# No secrets here: the Synapse admin password comes from the
+# TF_VAR_synapse_sql_administrator_login_password environment variable, and the
+# subscription from ARM_SUBSCRIPTION_ID, at apply time.
+location                      = "uksouth"
+resource_group_name           = "river-levels-rg"
+lake_account_name             = "riverlevelslake"
+function_storage_account_name = "riverlevelsfunc"
+function_app_name             = "river-levels-ingest"
+synapse_workspace_name        = "river-levels-synapse"
+github_repo                   = "RCDW/river-levels"
+github_branch                 = "main"
