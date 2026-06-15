@@ -113,7 +113,25 @@ jobs:
               --overwrite true
           done
 
-      # 4) Commit built data to the `data` branch (keeps `main` history human)
+      # 4) Publish the fresh data to the edge ourselves. deploy.yml only runs on
+      #    web/** code pushes, so without this a scheduled refresh reaches the
+      #    data branch but never the CDN, and the dashboard (incl. the Feature C
+      #    in-browser trace, which reads the layer Parquet from the edge) serves
+      #    stale data. Scoped to the data/ prefix via a dedicated least-privilege
+      #    role (infra/github_oidc.tf), separate from the full-site deploy role.
+      - uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.DATA_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Publish fresh data to the edge
+        run: |
+          aws s3 sync web/data "s3://${{ vars.SITE_BUCKET }}/data" --delete
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/data/*"
+
+      # 5) Commit built data to the `data` branch (keeps `main` history human,
+      #    and remains the source deploy.yml pulls web/data from on code deploys)
       - name: Push to data branch
         run: |
           git config user.name  "river-bot"

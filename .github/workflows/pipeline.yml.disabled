@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write              # to push built artifacts to the data branch
+  id-token: write              # request the OIDC token to self-publish to S3
 
 concurrency:
   group: river-pipeline
@@ -47,7 +48,21 @@ jobs:
       - name: Publish artifacts
         run: python publish/export.py
 
-      # 4) Commit built data to the `data` branch (keeps `main` history human)
+      # 4) Publish the fresh data to the edge ourselves (mirrors the hybrid
+      #    pipeline, so this rollback path stays at parity). Scoped to data/ via
+      #    the dedicated least-privilege role (infra/github_oidc.tf).
+      - uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.DATA_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Publish fresh data to the edge
+        run: |
+          aws s3 sync web/data "s3://${{ vars.SITE_BUCKET }}/data" --delete
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/data/*"
+
+      # 5) Commit built data to the `data` branch (keeps `main` history human)
       - name: Push to data branch
         run: |
           git config user.name  "river-bot"
