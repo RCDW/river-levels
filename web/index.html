@@ -126,13 +126,13 @@
     <div class="meta" id="chartMeta">loading…</div>
     <svg class="chart" id="chart" viewBox="0 0 600 170" preserveAspectRatio="none" role="img"
          aria-label="River level over the recent window"></svg>
-    <!-- B: anomaly threshold slider — pure client-side re-flagging of the series -->
+    <!-- B: anomaly threshold slider: pure client-side re-flagging of the series -->
     <div class="thresh">
       <label for="thSlider">Anomaly threshold</label>
       <input type="range" id="thSlider" min="0" max="1" step="0.01" value="1"
              aria-label="Anomaly threshold">
       <span class="thread"><strong id="thCount">0</strong>/<span id="thTotal">0</span>
-        readings flagged · <span id="thVal">—</span></span>
+        readings flagged · <span id="thVal">n/a</span></span>
       <div class="thbasis">Default = this station's typical-range-high (the level
         it exceeds only ~5% of the time); drag to re-flag readings live.</div>
     </div>
@@ -181,7 +181,7 @@ function fmtAgo(iso){
 
 // Feature A: render the real run metadata into the health panel. The pipeline
 // publishes only after a green dbt test (last-known-good), so a failed run never
-// overwrites this — when the latest run failed, the panel keeps showing the last
+// overwrites this; when the latest run failed, the panel keeps showing the last
 // good run and flags it as stale. Cron is every 3 h; allow one missed run.
 const STALE_MIN = 360;
 
@@ -223,7 +223,7 @@ function renderHealth(meta){
   if(stale){
     note.textContent =
       `Last successful run was ${fmtAgo(meta.last_run_utc)}. The scheduled refresh ` +
-      `runs every 3 h, so this may be stale — showing last-known-good data.`;
+      `runs every 3 h, so this may be stale; showing last-known-good data.`;
   }
 }
 
@@ -308,7 +308,7 @@ function getLineage(){
   return lineagePromise;
 }
 
-// Build via createElement + textContent only — never innerHTML of data values.
+// Build via createElement + textContent only, never innerHTML of data values.
 function el(tag, cls, text){
   const e = document.createElement(tag);
   if(cls) e.className = cls;
@@ -317,7 +317,7 @@ function el(tag, cls, text){
 }
 function kv(k, v){
   const row = el("div", "kv");
-  row.append(el("span", "kk", k), el("span", "vv", v == null ? "—" : v));
+  row.append(el("span", "kk", k), el("span", "vv", v == null ? "n/a" : v));
   return row;
 }
 function traceCard(title, sub){
@@ -370,7 +370,7 @@ async function showTrace(i){
     ? `Ingested ${b.copies}× into bronze by overlapping refreshes; silver kept the ` +
       `latest copy and dropped the rest. That dedup is the normally-invisible ` +
       `work the pipeline does on every reading.`
-    : `Ingested once into bronze and carried through unchanged — reading_id is the ` +
+    : `Ingested once into bronze and carried through unchanged; reading_id is the ` +
       `same key across all three layers, never re-derived.`;
 }
 

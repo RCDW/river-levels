@@ -51,7 +51,7 @@ def dbt_test_stats() -> dict:
 
 def emit_lineage(con: duckdb.DuckDBPyConnection) -> None:
     """Pre-computed bronze -> silver -> gold lineage for every plotted reading_id
-    (Feature C v1). Keyed by reading_id — the trace key minted at ingest and
+    (Feature C v1). Keyed by reading_id, the trace key minted at ingest and
     carried unchanged, never re-derived here. Each layer is queried independently:
     bronze straight from the append-only Parquet, silver and gold from their
     tables, so the dedup story (bronze may hold >1 copy; silver kept the latest)
@@ -73,7 +73,7 @@ def emit_lineage(con: duckdb.DuckDBPyConnection) -> None:
     silver["ingested_at"] = silver["ingested_at"].astype(str)
     silver_by_id = {r["reading_id"]: r for r in json.loads(silver.to_json(orient="records"))}
 
-    # Raw copies per reading_id, oldest first — exposes the normally-invisible
+    # Raw copies per reading_id, oldest first; exposes the normally-invisible
     # duplicate ingests that silver dedupes away.
     bronze = con.sql(
         "select b.reading_id, b.value, b._ingested_at as ingested_at, "
