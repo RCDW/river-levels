@@ -33,3 +33,19 @@ AVD-AWS-0010
 # Same rationale as CloudFront logging: public static assets, low audit value,
 # avoids an extra log bucket. Accepted.
 AVD-AWS-0089
+
+# --- Azure (W6 hybrid) ---
+# Triaged 2026-06-15. The lake is ADLS Gen2 holding PUBLIC OGL river data. The
+# hybrid reads it from GitHub-hosted Actions runners (dynamic egress IPs that
+# cannot be whitelisted), local `az login` dev, and Synapse serverless - all
+# over the public endpoint with AUTHENTICATED access only (RBAC via managed
+# identity / OIDC; anonymous blob access is already disabled).
+
+# CRITICAL: storage account network rules default action allows access.
+# default_action = "Deny" is a network-layer ACL, separate from RBAC, and would
+# block the Actions runner, local dev and Synapse from reaching the lake -
+# breaking the pipeline (a managed identity does not bypass network rules).
+# Genuinely locking the network would need private endpoints + a VNet-integrated
+# self-hosted runner, disproportionate for a portfolio over public data already
+# guarded by RBAC and no-anonymous-access. Accepted.
+AVD-AZU-0012
