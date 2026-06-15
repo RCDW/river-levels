@@ -304,7 +304,12 @@ function initThreshold(station){
 // for a live DuckDB-WASM query against the layer Parquet; the cards don't change.
 let lineagePromise = null;
 function getLineage(){
-  if(!lineagePromise) lineagePromise = fetch("./data/lineage.json").then(r=>r.json());
+  if(!lineagePromise){
+    lineagePromise = fetch("./data/lineage.json").then(r=>r.json());
+    // Don't cache a rejection: a transient failure shouldn't disable tracing
+    // until reload — let the next click retry.
+    lineagePromise.catch(() => { lineagePromise = null; });
+  }
   return lineagePromise;
 }
 
