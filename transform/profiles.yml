@@ -1,11 +1,35 @@
 # For local dev this can live here or in ~/.dbt/profiles.yml.
 # DuckDB needs no server: the whole warehouse is one file.
+#
+# Two targets, same models (so Feature C works against either - the layers
+# stay individually queryable):
+#   dev    -> reads local bronze parquet (default; free, offline)
+#   azure  -> reads bronze from ADLS Gen2 via DuckDB's `azure` extension (W6)
+#
+# Azure/Blob/ADLS is the `azure` extension, NOT httpfs (httpfs is S3/HTTP).
+# For the azure target also set the source glob, e.g.
+#   LAKE_ACCOUNT_NAME = <account>
+#   BRONZE_GLOB       = abfss://lake/bronze/**/*.parquet
 river_portfolio:
   target: dev
   outputs:
+
     dev:
       type: duckdb
       path: "../data/river.duckdb"
+      threads: 4
+
+    azure:
+      type: duckdb
+      path: "../data/river.duckdb"
       extensions:
-        - httpfs        # lets DuckDB read parquet over http/Azure Blob (W6)
+        - azure
+      # dbt-duckdb creates this secret at connection time - no secret in SQL.
+      # credential_chain tries CLI (local `az login`), then managed identity
+      # (CI/Function), then env vars - passwordless everywhere.
+      secrets:
+        - type: azure
+          provider: credential_chain
+          chain: "cli;managed_identity;env"
+          account_name: "{{ env_var('LAKE_ACCOUNT_NAME') }}"
       threads: 4
