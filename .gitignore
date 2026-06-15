@@ -1,6 +1,9 @@
 .env
 .env.*
 !.env.example
+# W6 reference material: skeleton-shaped Azure files used as a porting source.
+# Local-only; the real files are adapted into the repo (ingest/, transform/, etc.).
+.w6-reference/
 # Locally-generated pipeline data. The scheduled pipeline force-adds the
 # published artifacts to the `data` branch (git add -f bypasses this), so they
 # never land on a code branch from a local run. The warehouse is rebuilt each run.
