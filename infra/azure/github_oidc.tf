@@ -10,12 +10,11 @@ resource "azurerm_user_assigned_identity" "github_actions" {
 }
 
 resource "azurerm_federated_identity_credential" "github_actions" {
-  name                = "github-actions-${var.github_branch}"
-  resource_group_name = azurerm_resource_group.this.name
-  parent_id           = azurerm_user_assigned_identity.github_actions.id
-  audience            = ["api://AzureADTokenExchange"]
-  issuer              = "https://token.actions.githubusercontent.com"
-  subject             = "repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"
+  name      = "github-actions-${var.github_branch}"
+  parent_id = azurerm_user_assigned_identity.github_actions.id
+  audience  = ["api://AzureADTokenExchange"]
+  issuer    = "https://token.actions.githubusercontent.com"
+  subject   = "repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"
 }
 
 # Contributor (not just Reader) because the workflow also writes the published
