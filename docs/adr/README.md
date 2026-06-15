@@ -30,3 +30,4 @@ in the numbering are those removed records.
 - [0010 - One ingest module, two runners](0010-one-ingest-two-runners.md)
 - [0011 - Last-known-good publish via the data branch](0011-last-known-good-publish.md)
 - [0012 - reading_id minted at ingest: assert, don't re-derive](0012-reading-id-at-ingest.md)
+- [0013 - Click-to-trace v1: pre-computed lineage JSON, DuckDB-WASM later](0013-precomputed-lineage-then-wasm.md)

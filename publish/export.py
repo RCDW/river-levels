@@ -14,6 +14,7 @@ committed are always last-known-good.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 import duckdb
@@ -21,6 +22,101 @@ import duckdb
 DB = pathlib.Path("data/river.duckdb")
 OUT = pathlib.Path("web/data")
 PARQUET = OUT / "parquet"
+RUN_RESULTS = pathlib.Path("transform/target/run_results.json")
+# Bronze stays external Parquet (never collapsed into the db) so it can be queried
+# as its own layer. Matches transform/models/sources.yml; publish runs from the
+# repo root, hence the root-relative default. W6 swaps this for an Azure Blob URL.
+BRONZE_GLOB = os.environ.get("BRONZE_GLOB", "data/bronze/**/*.parquet")
+
+
+def dbt_test_stats() -> dict:
+    """Real test pass/total from the last `dbt test`, for the health panel
+    (Feature A). dbt writes target/run_results.json, and publish always runs
+    straight after `dbt test`, so this file reflects the gate that let us
+    publish. Guarded: if it is absent (a publish-only local run) we report nulls
+    rather than inventing a status.
+
+    We deliberately report tests only, not models: `dbt test` overwrites
+    run_results.json after `dbt run`, so a model count here would always be 0 and
+    misrepresent the run."""
+    if not RUN_RESULTS.exists():
+        return {"tests_passed": None, "tests_total": None}
+    results = json.loads(RUN_RESULTS.read_text()).get("results", [])
+    tests = [r for r in results if r["unique_id"].startswith("test.")]
+    return {
+        "tests_passed": sum(1 for r in tests if r["status"] == "pass"),
+        "tests_total": len(tests),
+    }
+
+
+def emit_lineage(con: duckdb.DuckDBPyConnection) -> None:
+    """Pre-computed bronze -> silver -> gold lineage for every plotted reading_id
+    (Feature C v1). Keyed by reading_id, the trace key minted at ingest and
+    carried unchanged, never re-derived here. Each layer is queried independently:
+    bronze straight from the append-only Parquet, silver and gold from their
+    tables, so the dedup story (bronze may hold >1 copy; silver kept the latest)
+    is real, not asserted.
+
+    The payload shape is exactly what W7 will reproduce from a live DuckDB-WASM
+    query, so that upgrade swaps the *source*, not the front-end."""
+    gold = con.sql(
+        "select reading_id, station_reference, station_label, "
+        "date_time_utc, value, unit_name from gold_series"
+    ).df()
+    gold["date_time_utc"] = gold["date_time_utc"].astype(str)
+
+    silver = con.sql(
+        "select reading_id, value, quality_flag, ingested_at "
+        "from stg_river_readings "
+        "where reading_id in (select reading_id from gold_series)"
+    ).df()
+    silver["ingested_at"] = silver["ingested_at"].astype(str)
+    silver_by_id = {r["reading_id"]: r for r in json.loads(silver.to_json(orient="records"))}
+
+    # Raw copies per reading_id, oldest first; exposes the normally-invisible
+    # duplicate ingests that silver dedupes away.
+    bronze = con.sql(
+        "select b.reading_id, b.value, b._ingested_at as ingested_at, "
+        "b._source_batch_id as source_batch_id "
+        f"from read_parquet('{BRONZE_GLOB}', union_by_name=true, filename=true) b "
+        "where b.reading_id in (select reading_id from gold_series) "
+        "order by b.reading_id, b._ingested_at"
+    ).df()
+    bronze_by_id: dict[str, list] = {}
+    for rec in json.loads(bronze.to_json(orient="records")):
+        bronze_by_id.setdefault(rec["reading_id"], []).append(
+            {
+                "value": rec["value"],
+                "ingested_at": rec["ingested_at"],
+                "source_batch_id": rec["source_batch_id"],
+            }
+        )
+
+    lineage = {}
+    for g in json.loads(gold.to_json(orient="records")):
+        rid = g["reading_id"]
+        copies = bronze_by_id.get(rid, [])
+        s = silver_by_id.get(rid)
+        lineage[rid] = {
+            "reading_id": rid,
+            "station_reference": g["station_reference"],
+            "station_label": g["station_label"],
+            "date_time_utc": g["date_time_utc"],
+            "bronze": {"copies": len(copies), "records": copies},
+            "silver": (
+                {
+                    "value": s["value"],
+                    "quality_flag": s["quality_flag"],
+                    "ingested_at": s["ingested_at"],
+                }
+                if s
+                else None
+            ),
+            "gold": {"value": g["value"], "unit_name": g["unit_name"]},
+        }
+
+    (OUT / "lineage.json").write_text(json.dumps(lineage))
+    print(f"[publish] lineage.json written ({len(lineage)} readings)")
 
 
 def main() -> int:
@@ -63,19 +159,36 @@ def main() -> int:
     if p.exists():
         ingest_meta = json.loads(p.read_text())
 
+    stats = dbt_test_stats()
+    # Publish only ever runs after a green `dbt build`/`dbt test` (see the
+    # workflow), so every published run is last-known-good: each stage is "ok".
+    stages = [
+        {"name": "ingest", "status": "ok"},
+        {"name": "dbt build", "status": "ok"},
+        {"name": "dbt test", "status": "ok"},
+        {"name": "publish", "status": "ok"},
+    ]
+
     (OUT / "run_meta.json").write_text(
         json.dumps(
             {
                 "last_run_utc": ingest_meta.get("last_ingest_utc"),
+                "rows_ingested": ingest_meta.get("rows_ingested"),
                 "silver_rows": int(rows),
                 "stations": int(n_stations),
                 "above_threshold": int(n_above),
+                "tests_passed": stats["tests_passed"],
+                "tests_total": stats["tests_total"],
+                "stages": stages,
                 "status": "ok",
                 "attribution": ingest_meta.get("attribution"),
             },
             indent=2,
         )
     )
+    # --- pre-computed click-to-trace lineage (Feature C v1) -------------- #
+    emit_lineage(con)
+
     print("[publish] gold.json, parquet/, run_meta.json written")
     return 0
 
