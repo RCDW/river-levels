@@ -29,6 +29,23 @@ RUN_RESULTS = pathlib.Path("transform/target/run_results.json")
 BRONZE_GLOB = os.environ.get("BRONZE_GLOB", "data/bronze/**/*.parquet")
 
 
+def _enable_azure_if_needed(con: duckdb.DuckDBPyConnection) -> None:
+    """When BRONZE_GLOB points at the lake (the azure pipeline), the lineage
+    step re-reads bronze straight from ADLS. This standalone connection needs
+    the azure extension + a credential to do that; the local dev path needs
+    neither, so this is a no-op unless the glob is an Azure URL. Auth is the
+    same passwordless credential_chain the dbt azure target uses."""
+    if not BRONZE_GLOB.startswith(("abfss://", "az://", "azure://")):
+        return
+    con.execute("INSTALL azure; LOAD azure;")
+    con.execute(
+        "CREATE SECRET IF NOT EXISTS azlake "
+        "(TYPE azure, PROVIDER credential_chain, "
+        "CHAIN 'cli;managed_identity;env', "
+        f"ACCOUNT_NAME '{os.environ['LAKE_ACCOUNT_NAME']}')"
+    )
+
+
 def dbt_test_stats() -> dict:
     """Real test pass/total from the last `dbt test`, for the health panel
     (Feature A). dbt writes target/run_results.json, and publish always runs
@@ -123,6 +140,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     PARQUET.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(DB), read_only=True)
+    _enable_azure_if_needed(con)
 
     # --- small JSON for first paint -------------------------------------- #
     latest = con.sql("select * from gold_station_latest").df()
