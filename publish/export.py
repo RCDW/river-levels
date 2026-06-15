@@ -2,9 +2,11 @@
 Publish step: read the built warehouse and emit the artifacts the front-end
 serves from the CDN.
 
-  web/data/gold.json        small + fast -> instant first paint (3-second demo)
+  web/data/gold.json        small + fast -> instant first paint (3-second demo);
+                            also carries the per-station forecast (Feature D)
   web/data/parquet/*.parquet  bronze/silver/gold -> DuckDB-WASM queries these
-                              in-browser for Feature C (W7)
+                              in-browser for Feature C (W7). Bronze is a rolling
+                              window so the trace reaches the raw layer cheaply.
   web/data/run_meta.json    last successful run, row counts -> health panel (A)
 
 Only ever runs after `dbt test` passes (see the workflow), so the artifacts
@@ -18,11 +20,22 @@ import os
 import pathlib
 
 import duckdb
+import numpy as np
 
 DB = pathlib.Path("data/river.duckdb")
 OUT = pathlib.Path("web/data")
 PARQUET = OUT / "parquet"
 RUN_RESULTS = pathlib.Path("transform/target/run_results.json")
+# Feature C traces back to the raw layer in-browser, but bronze is append-only
+# and grows forever; export only a rolling window so bronze.parquet stays small
+# (and free) while still covering the plotted range. 90 days is well past the
+# 30-day gold window the chart shows.
+WINDOW_DAYS = 90
+# Feature D forecast shape: fit the trend on the last FIT_HOURS, project
+# FORECAST_HOURS ahead at the EA reading cadence.
+FORECAST_HOURS = 6
+FIT_HOURS = 12
+STEP_MIN = 15
 # Bronze stays external Parquet (never collapsed into the db) so it can be queried
 # as its own layer. Matches transform/models/sources.yml; publish runs from the
 # repo root, hence the root-relative default. W6 swaps this for an Azure Blob URL.
@@ -142,6 +155,37 @@ def emit_lineage(con: duckdb.DuckDBPyConnection) -> None:
     print(f"[publish] lineage.json written ({len(lineage)} readings)")
 
 
+def _forecast(series_rows: list[dict]) -> list[dict]:
+    """Feature D: a deliberately simple, explainable forecast. Least-squares
+    linear trend fit on the last FIT_HOURS of readings, lightly damped, projected
+    FORECAST_HOURS past the latest point at the EA cadence.
+
+    Univariate on purpose: a real river forecast needs upstream rainfall as a
+    feature, and this models none. That honest limitation is the "small changes
+    propagate downstream" story the UI states outright; it is not dressed up as a
+    real model. Returns [] when there is too little recent data to fit."""
+    pts = [r for r in series_rows if r["value"] is not None]
+    if len(pts) < 4:
+        return []
+    t0 = np.array([np.datetime64(r["date_time_utc"]) for r in pts])
+    secs = (t0 - t0[0]) / np.timedelta64(1, "s")
+    recent = secs >= (secs.max() - FIT_HOURS * 3600)
+    if recent.sum() < 4:
+        return []
+    x, y = secs[recent], np.array([r["value"] for r in pts])[recent]
+    slope, _intercept = np.polyfit(x, y, 1)
+    last_v = pts[-1]["value"]
+    out = []
+    steps = int(FORECAST_HOURS * 60 / STEP_MIN)
+    for k in range(1, steps + 1):
+        ds = k * STEP_MIN * 60
+        damp = 0.97**k  # ease the slope out over the horizon, never extrapolate hard
+        v = last_v + slope * ds * damp
+        ts = np.datetime64(pts[-1]["date_time_utc"]) + np.timedelta64(ds, "s")
+        out.append({"date_time_utc": str(ts), "value": round(float(v), 3), "kind": "forecast"})
+    return out
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     PARQUET.mkdir(parents=True, exist_ok=True)
@@ -157,9 +201,18 @@ def main() -> int:
     series["date_time_utc"] = series["date_time_utc"].astype(str)
     latest["latest_at"] = latest["latest_at"].astype(str)
 
+    series_records = json.loads(series.to_json(orient="records"))
+    by_station: dict[str, list[dict]] = {}
+    for r in series_records:
+        by_station.setdefault(r["station_reference"], []).append(r)
+
     gold = {
         "stations": json.loads(latest.to_json(orient="records")),
-        "series": json.loads(series.to_json(orient="records")),
+        "series": series_records,
+        # Feature D: per-station projection + the method string the UI shows so
+        # the forecast is never mistaken for more than a transparent trend.
+        "forecast": {ref: _forecast(rows) for ref, rows in by_station.items()},
+        "forecast_method": "linear trend (last 12h, damped); univariate, rainfall not modelled",
     }
     (OUT / "gold.json").write_text(json.dumps(gold, indent=2))
 
@@ -170,6 +223,14 @@ def main() -> int:
         "silver": "select * from stg_river_readings",
     }.items():
         con.sql(query).write_parquet(str(PARQUET / f"{layer}.parquet"))
+    # Bronze is the append-only raw layer, read straight from its Parquet (never
+    # collapsed into the db), so the trace can show the real duplicate ingests.
+    # Export only the rolling window to keep the file small; the same date_time
+    # column drives the silver cast (transform/models/sources.yml).
+    con.sql(
+        f"select * from read_parquet('{BRONZE_GLOB}', union_by_name=true) "
+        f"where cast(date_time as timestamp) >= now() - interval {WINDOW_DAYS} day"
+    ).write_parquet(str(PARQUET / "bronze.parquet"))
 
     # --- health panel metadata (Feature A) ------------------------------- #
     rows = con.sql("select count(*) from stg_river_readings").fetchone()[0]
@@ -213,7 +274,7 @@ def main() -> int:
     # --- pre-computed click-to-trace lineage (Feature C v1) -------------- #
     emit_lineage(con)
 
-    print("[publish] gold.json, parquet/, run_meta.json written")
+    print("[publish] gold.json (+forecast), parquet/ (incl bronze window), run_meta.json written")
     return 0
 
 
