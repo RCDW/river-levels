@@ -200,6 +200,7 @@ is identical.
 | ADLS Gen2 (hot) | ~GBP 0.018/GB/mo | few GB rolling | pennies |
 | Synapse serverless | $5/TB, 10 MB min, free DDL/cached | MB-scale -> 10 MB floor | ~GBP 0.00005/query |
 | ADF | per-1,000 activity runs | on-demand only | ~GBP 0 |
+| App Insights (Log Analytics) | free: 5 GB ingest/mo | tiny telemetry, 30-day retention | GBP 0 |
 | Egress -> Actions | first 100 GB/mo free | <1 GB | GBP 0 |
 
 **Total ~GBP 0.20-0.50/month**, stated honestly; the Synapse data-processed cap
