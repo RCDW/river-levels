@@ -3,7 +3,7 @@
 # No secrets here: the Synapse admin password comes from the
 # TF_VAR_synapse_sql_administrator_login_password environment variable, and the
 # subscription from ARM_SUBSCRIPTION_ID, at apply time.
-location                      = "uksouth"
+location                      = "ukwest"
 resource_group_name           = "river-levels-rg"
 lake_account_name             = "riverlevelslake"
 function_storage_account_name = "riverlevelsfunc"

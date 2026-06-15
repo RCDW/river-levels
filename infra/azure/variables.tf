@@ -1,6 +1,9 @@
 variable "location" {
-  type    = string
-  default = "uksouth" # UK South - nearest region
+  type = string
+  # UK West: this subscription cannot provision new SQL servers (Synapse) in
+  # uksouth, and uksouth App Service quota was unavailable on the new account.
+  # ukwest is the nearest region that accepts the whole stack.
+  default = "ukwest"
 }
 
 variable "name_prefix" {
