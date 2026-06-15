@@ -1,0 +1,91 @@
+name: river-pipeline (hybrid / W6)
+
+# The hybrid scheduled pipeline. INGEST is owned by the Azure Function (it lands
+# bronze in ADLS), so this workflow only TRANSFORMS (dbt against the lake) and
+# PUBLISHES. It runs ALONGSIDE the W3 river-pipeline during the parallel window;
+# at cutover, disable .github/workflows/pipeline.yml (see docs/w6-cutover-runbook.md).
+#
+# Auth to Azure is OIDC federated credentials - no long-lived secret. The
+# federated identity has Storage Blob Data Contributor on the lake (reads
+# bronze, writes lake/publish/).
+#
+# Requires repo secrets AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+# and repo variable LAKE_ACCOUNT_NAME (the infra/azure outputs supply these).
+on:
+  schedule:
+    - cron: "10 */3 * * *" # offset 10 min after the Function's ingest (0 */3)
+  workflow_dispatch: {} # manual safety net
+
+permissions:
+  contents: write # push built artifacts to the data branch
+  id-token: write # request the OIDC token for azure/login
+
+# Distinct group from the W3 pipeline so the two never cancel each other during
+# the parallel run; never interrupt an in-flight run either.
+concurrency:
+  group: river-pipeline-hybrid
+  cancel-in-progress: false
+
+env:
+  LAKE_ACCOUNT_NAME: ${{ vars.LAKE_ACCOUNT_NAME }}
+  BRONZE_GLOB: "abfss://lake/bronze/**/*.parquet"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install dbt-duckdb duckdb pandas pyarrow PyYAML
+
+      # 1) TRANSFORM -> silver + gold, reading bronze from ADLS via the azure target
+      - name: dbt build (reads bronze from ADLS)
+        working-directory: transform
+        run: |
+          dbt deps
+          dbt seed --profiles-dir . --target azure
+          dbt run  --profiles-dir . --target azure
+          dbt test --profiles-dir . --target azure   # fail here -> no publish -> last-known-good
+
+      # 2) PUBLISH -> gold.json + parquet + run_meta (lineage re-reads bronze from ADLS)
+      - name: Publish artifacts
+        run: python publish/export.py
+
+      # 3) Land the published parquet in the lake so Synapse external views have
+      #    a source (synapse/external_views.sql reads lake/publish/parquet/*).
+      - name: Upload published parquet to the lake
+        run: |
+          for f in web/data/parquet/*.parquet; do
+            az storage blob upload \
+              --account-name "$LAKE_ACCOUNT_NAME" \
+              --auth-mode login \
+              --container-name lake \
+              --name "publish/parquet/$(basename "$f")" \
+              --file "$f" \
+              --overwrite true
+          done
+
+      # 4) Commit built data to the `data` branch (keeps `main` history human)
+      - name: Push to data branch
+        run: |
+          git config user.name  "river-bot"
+          git config user.email "bot@reecewall.dev"
+          git add -f web/data
+          git stash
+          git fetch origin data || true
+          git switch -C data
+          git stash pop || true
+          git add -f web/data
+          git commit -m "data: hybrid refresh $(date -u +%FT%TZ)" || echo "no changes"
+          git push -f origin data
