@@ -17,6 +17,10 @@ resource "azurerm_linux_function_app" "ingest" {
   storage_account_name       = azurerm_storage_account.func.name
   storage_account_access_key = azurerm_storage_account.func.primary_access_key
 
+  # Redirect HTTP to HTTPS. The Function is timer-triggered (no public ingress),
+  # but this is free hardening and keeps the control plane TLS-only.
+  https_only = true
+
   # System-assigned identity - the Function authenticates to the lake with this,
   # no connection string (see the role assignment below).
   identity {
