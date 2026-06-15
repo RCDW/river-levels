@@ -82,6 +82,19 @@ jobs:
           dbt run  --profiles-dir . --target azure
           dbt test --profiles-dir . --target azure   # fail here -> no publish -> last-known-good
 
+      # The hybrid has no local ingest step, so export.py's run_meta would carry
+      # null last_run_utc / rows_ingested (it reads web/data/ingest_meta.json,
+      # which only the W3 ingest writes). Bridge the Function's bronze/_latest.json
+      # heartbeat into that file so the freshness + row count are real.
+      - name: Heartbeat -> ingest_meta
+        run: |
+          mkdir -p web/data
+          az storage blob download --account-name "$LAKE_ACCOUNT_NAME" --auth-mode login \
+            --container-name lake --name bronze/_latest.json --file /tmp/hb.json -o none
+          jq '{last_ingest_utc: .last_ingest_utc, rows_ingested: .rows}' /tmp/hb.json \
+            > web/data/ingest_meta.json
+          cat web/data/ingest_meta.json
+
       # 2) PUBLISH -> gold.json + parquet + run_meta (lineage re-reads bronze from ADLS)
       - name: Publish artifacts
         run: python publish/export.py

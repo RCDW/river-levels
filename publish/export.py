@@ -27,6 +27,12 @@ RUN_RESULTS = pathlib.Path("transform/target/run_results.json")
 # as its own layer. Matches transform/models/sources.yml; publish runs from the
 # repo root, hence the root-relative default. W6 swaps this for an Azure Blob URL.
 BRONZE_GLOB = os.environ.get("BRONZE_GLOB", "data/bronze/**/*.parquet")
+# EA attribution is required wherever the data is shown (OGL v3). It is fixed
+# text, not run-dependent, so always emit it - never let it fall to null (the
+# hybrid path has no local ingest_meta.json to read it from).
+ATTRIBUTION = (
+    "this uses Environment Agency flood and river level data from the real-time data API (Beta)"
+)
 
 
 def _enable_azure_if_needed(con: duckdb.DuckDBPyConnection) -> None:
@@ -199,7 +205,7 @@ def main() -> int:
                 "tests_total": stats["tests_total"],
                 "stages": stages,
                 "status": "ok",
-                "attribution": ingest_meta.get("attribution"),
+                "attribution": ATTRIBUTION,
             },
             indent=2,
         )
