@@ -28,7 +28,11 @@ concurrency:
 
 env:
   LAKE_ACCOUNT_NAME: ${{ vars.LAKE_ACCOUNT_NAME }}
-  BRONZE_GLOB: "abfss://lake/bronze/**/*.parquet"
+  # The DuckDB azure extension only allows a recursive glob ending in ** (not a
+  # **/*.parquet suffix), and ** alone would also match bronze/_latest.json. Scope
+  # to the day partitions: parquet only, and a legal pattern. (Local dev uses the
+  # filesystem default, which has no such restriction.)
+  BRONZE_GLOB: "abfss://lake/bronze/dt=*/**"
 
 jobs:
   run:
