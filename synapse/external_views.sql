@@ -18,6 +18,12 @@
 
 -- 1) One-time cost guardrail. Run in the MASTER database (not river_lake);
 --    caps total data processed so a runaway query cannot surprise the bill.
+--    All three tiers must satisfy daily <= weekly <= monthly, and 1 TB is the
+--    per-tier minimum - so set all three to the floor (a ~$5 monthly ceiling).
+--    Setting monthly alone fails: the unset daily/weekly tiers are unlimited,
+--    which violates daily <= weekly <= monthly.
+EXEC sp_set_data_processed_limit @type = N'daily',   @limit_tb = 1;
+EXEC sp_set_data_processed_limit @type = N'weekly',  @limit_tb = 1;
 EXEC sp_set_data_processed_limit @type = N'monthly', @limit_tb = 1;
 GO
 
