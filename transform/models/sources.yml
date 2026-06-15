@@ -11,8 +11,9 @@ sources:
       - name: readings
         description: One row per (measure, dateTime) as pulled from the API.
         meta:
-          # In W3 this glob is local. In W6 it becomes an Azure Blob URL, e.g.
-          #   az://<container>/bronze/**/*.parquet   (read via httpfs + secret)
+          # The default glob is local. With the `azure` target BRONZE_GLOB
+          # becomes an ADLS Gen2 path, e.g.
+          #   abfss://lake/bronze/**/*.parquet   (read via the azure extension)
           external_location: "read_parquet('{{ env_var('BRONZE_GLOB', '../data/bronze/**/*.parquet') }}', union_by_name=true, filename=true)"
         columns:
           - name: reading_id
