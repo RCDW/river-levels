@@ -28,7 +28,7 @@ jobs:
       - name: Install deps
         run: |
           pip install -r ingest/requirements.txt
-          pip install dbt-duckdb duckdb
+          pip install dbt-duckdb duckdb numpy
 
       # 1) INGEST -> append-only bronze parquet
       - name: Ingest (EA API -> bronze)

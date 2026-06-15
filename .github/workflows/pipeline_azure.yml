@@ -51,7 +51,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install deps
-        run: pip install dbt-duckdb duckdb pandas pyarrow PyYAML
+        run: pip install dbt-duckdb duckdb pandas pyarrow PyYAML numpy
 
       # The dbt warehouse + publish read/write ../data/river.duckdb, but unlike
       # the W3 pipeline this workflow drops ingest (the Function owns it), so
