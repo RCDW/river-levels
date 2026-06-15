@@ -42,6 +42,23 @@ that creates resources, deploys, or incurs cost was run by Claude.
 
 ---
 
+## 0. Subscription prerequisites (new accounts)
+
+A brand-new subscription ships with limits that block the compute plane even
+though the storage plane provisions fine. Two were hit on first apply:
+
+- **App Service compute quota of 0.** The Consumption Function plan needs at
+  least one VM of quota; a fresh subscription often has `Total VMs: 0` and the
+  plan fails with a 401 quota error. Request it once: Portal -> your
+  **Subscription -> Settings -> Usage + quotas** -> filter to App Service / your
+  region -> request a limit of >= 1 (free, usually granted quickly). Changing
+  the SKU does not avoid it.
+- **Region must accept new SQL servers.** Synapse provisions a SQL server under
+  the hood; some subscriptions cannot create new SQL servers in `uksouth`
+  (`SqlServerRegionDoesNotAllowProvisioning`). The default region is therefore
+  **`ukwest`** (`var.location`); pick another region (or raise a support
+  request) if ukwest is also restricted for your subscription.
+
 ## 1. Provision (Terraform - human-run)
 
 `apply` is human-run, never CI (same rule as the AWS infra).
@@ -56,7 +73,7 @@ terraform plan
 terraform apply
 ```
 
-This creates: resource group (UK South); the ADLS Gen2 lake (HNS on, no
+This creates: resource group (UK West, see section 0); the ADLS Gen2 lake (HNS on, no
 anonymous access); the Functions runtime storage account; the Consumption
 Function App with a system-assigned identity (Storage Blob Data Contributor on
 the lake); the GitHub Actions user-assigned identity + OIDC federated credential
