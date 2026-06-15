@@ -49,6 +49,13 @@ jobs:
       - name: Install deps
         run: pip install dbt-duckdb duckdb pandas pyarrow PyYAML
 
+      # The dbt warehouse + publish read/write ../data/river.duckdb, but unlike
+      # the W3 pipeline this workflow drops ingest (the Function owns it), so
+      # nothing creates data/ first. DuckDB will not create the missing parent
+      # dir, so make it here.
+      - name: Create local warehouse dir
+        run: mkdir -p data
+
       # 1) TRANSFORM -> silver + gold, reading bronze from ADLS via the azure target
       - name: dbt build (reads bronze from ADLS)
         working-directory: transform
