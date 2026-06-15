@@ -32,11 +32,19 @@ resource "azurerm_linux_function_app" "ingest" {
       python_version = "3.12"
     }
 
+    # Wire App Insights via the native argument (host.json already enables the
+    # logger). azurerm manages the linked app settings + hidden-link tag, so this
+    # cleanly replaces the manual portal wiring without app_settings churn.
+    application_insights_connection_string = azurerm_application_insights.this.connection_string
+
     # Allow the Azure portal origin so the Code + Test / Run button works without
-    # a manual CORS entry. Only the portal test UI needs this; the scheduled
-    # timer does not, and there are no HTTP-triggered functions here.
+    # a manual CORS entry. Only the portal test UI needs this; the scheduled timer
+    # does not, and there are no HTTP-triggered functions here. The portal sets
+    # support_credentials=true when you add the origin by hand - match it so apply
+    # does not flip it off and break Test/Run.
     cors {
-      allowed_origins = ["https://portal.azure.com"]
+      allowed_origins     = ["https://portal.azure.com"]
+      support_credentials = true
     }
   }
 
@@ -46,9 +54,6 @@ resource "azurerm_linux_function_app" "ingest" {
     LAKE_CONTAINER   = azurerm_storage_data_lake_gen2_filesystem.lake.name
     # Required for the Python v2 (decorator) programming model.
     AzureWebJobsFeatureFlags = "EnableWorkerIndexing"
-    # Connect the Function to App Insights for invocation logs (host.json already
-    # enables the App Insights logger). Replaces the manual portal wiring.
-    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.this.connection_string
   }
 
   tags = local.tags
