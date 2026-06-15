@@ -4,6 +4,12 @@
 # W6 reference material: skeleton-shaped Azure files used as a porting source.
 # Local-only; the real files are adapted into the repo (ingest/, transform/, etc.).
 .w6-reference/
+# Function deploy: ingest/ and config/ are copied into azure_function/ at
+# publish time so `from ingest import ea_client` and stations.yml resolve in the
+# package. They are local-only vendored copies of the real files - never commit
+# them (that would duplicate the source). See docs/w6-cutover-runbook.md step 2.
+azure_function/ingest/
+azure_function/config/
 # Locally-generated pipeline data. The scheduled pipeline force-adds the
 # published artifacts to the `data` branch (git add -f bypasses this), so they
 # never land on a code branch from a local run. The warehouse is rebuilt each run.
