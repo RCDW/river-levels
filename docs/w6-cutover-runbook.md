@@ -111,12 +111,27 @@ cheap alert later if `_latest.json` goes stale.
 
 ## 3. Repoint dbt at the lake (verify)
 
-The `azure` target is already in `transform/profiles.yml`. To test it yourself:
+The `azure` target is already in `transform/profiles.yml`. To test it yourself.
+
+**Prerequisite (local dev):** your own `az login` identity needs **Storage Blob
+Data Reader** on the lake. Subscription Owner/Contributor is *control-plane* only
+and does NOT grant data-plane blob access - without the data role you get a 403.
+Terraform grants the data roles to the *service* identities (Function, Actions,
+Synapse), not your personal account, so grant yourself once:
+
+```bash
+me=$(az ad signed-in-user show --query id -o tsv)
+az role assignment create --assignee "$me" --role "Storage Blob Data Reader" \
+  --scope "$(az storage account show -n <lake_account_name> --query id -o tsv)"
+# wait ~2-5 min for RBAC propagation
+```
 
 ```bash
 az login                                        # credential_chain picks up the CLI
 export LAKE_ACCOUNT_NAME=<lake_account_name>
-export BRONZE_GLOB='abfss://lake/bronze/**/*.parquet'
+# azure ext: a recursive glob must END in ** (no **/*.parquet suffix); dt=* keeps
+# it scoped to the day partitions, so it stays parquet-only (excludes _latest.json)
+export BRONZE_GLOB='abfss://lake/bronze/dt=*/**'
 cd transform
 dbt deps
 dbt run  --profiles-dir . --target azure
