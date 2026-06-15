@@ -1,6 +1,6 @@
 # 9. Transform engine: dbt + DuckDB now, Azure hybrid at W6
 
-- **Status:** Accepted
+- **Status:** Superseded by 0014
 - **Date:** 2026-06-14
 
 ## Context
