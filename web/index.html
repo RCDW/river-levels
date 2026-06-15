@@ -54,6 +54,19 @@
   .thread{font-size:12px; color:var(--ink); white-space:nowrap}
   .thread strong{color:var(--warn)}
   .thbasis{flex-basis:100%; font-size:11px; color:var(--soft); margin-top:-4px}
+  /* D: forecast toggle */
+  .fcrow{margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .fctoggle{display:inline-flex; align-items:center; gap:9px; cursor:pointer;
+    background:none; border:0; padding:0; font:inherit; color:var(--ink)}
+  .fctrack{width:34px; height:18px; border-radius:20px; background:var(--hair);
+    position:relative; transition:background .15s; flex:none}
+  .fcknob{position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%;
+    background:#fff; transition:transform .15s}
+  .fctoggle[aria-checked=true] .fctrack{background:var(--forecast)}
+  .fctoggle[aria-checked=true] .fcknob{transform:translateX(16px)}
+  .fctoggle:focus-visible{outline:2px solid var(--forecast); outline-offset:3px; border-radius:4px}
+  .fclabel{font-size:12px; color:var(--muted); white-space:nowrap}
+  .fcnote{flex-basis:100%; font-size:11px; color:var(--soft)}
   /* staged feature rows */
   .stage{display:flex; align-items:center; gap:11px; background:var(--card);
     border-radius:9px; padding:11px 14px; margin-top:10px; font-size:13px}
@@ -136,6 +149,15 @@
       <div class="thbasis">Default = this station's typical-range-high (the level
         it exceeds only ~5% of the time); drag to re-flag readings live.</div>
     </div>
+    <!-- D: forecast toggle. Overlays a dashed projection; default off. -->
+    <div class="fcrow">
+      <button type="button" id="fcToggle" class="fctoggle" role="switch" aria-checked="false">
+        <span class="fctrack"><span class="fcknob"></span></span>
+        <span class="fclabel">Forecast (next 6h)</span>
+      </button>
+      <span class="fcnote" id="fcNote">A simple damped linear trend. Univariate:
+        upstream rainfall isn't modelled, so it can't anticipate rain-driven rises.</span>
+    </div>
   </div>
 
   <!-- C: click-to-trace bronze -> silver -> gold (pre-computed lineage.json) -->
@@ -159,9 +181,6 @@
     <div class="hstages" id="hStages"></div>
     <div class="hnote" id="hNote" hidden></div>
   </div>
-
-  <!-- D: staged honestly, not faked (forecast toggle is W7) -->
-  <div class="stage"><span class="tag">D</span>Forecast toggle<span class="soon">Weekend 7</span></div>
 
   <footer id="attribution">
     this uses Environment Agency flood and river level data from the real-time
@@ -228,41 +247,64 @@ function renderHealth(meta){
 }
 
 // Chart state, kept so the anomaly slider (Feature B) can re-flag points without
-// a redraw and so a click can resolve back to a reading_id (Feature C).
+// a redraw and so a click can resolve back to a reading_id (Feature C). The
+// forecast (Feature D) is stored here too and overlaid only when toggled on.
 let CHART = null;
+let showForecast = false;   // Feature D, default off
+let curThreshold = null;    // remembered so a redraw (toggle) can re-flag points
 
-function drawChart(points, unit){
+// Render from CHART + the current toggle state. Re-callable: toggling the
+// forecast redraws (it changes the plotted domain), then re-applies the
+// threshold flags onto the fresh SVG.
+function drawChart(){
   const svg = document.getElementById("chart");
-  if(!points.length){ svg.innerHTML = ""; return; }
+  if(!CHART || !CHART.points.length){ svg.innerHTML = ""; return; }
+  const { points, unit } = CHART;
+  const fc = showForecast ? (CHART.forecast || []) : [];
   const xs = points.map(p => new Date(p.date_time_utc).getTime());
-  const ys = points.map(p => p.value);
-  const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+  // Domain spans observations plus the forecast when it is shown, so the dashed
+  // projection has room on the right rather than running off the edge.
+  const all = points.concat(fc);
+  const ax = all.map(p => new Date(p.date_time_utc).getTime());
+  const ay = all.map(p => p.value);
+  const x0=Math.min(...ax), x1=Math.max(...ax), y0=Math.min(...ay), y1=Math.max(...ay);
   const W=600,H=170,pad=14;
   const sx = t => pad + (W-2*pad)*((t-x0)/((x1-x0)||1));
   const sy = v => (H-pad) - (H-2*pad)*((v-y0)/((y1-y0)||1));
-  CHART = { points, unit, xs, sx, sy, W, H, pad, y0, y1 };
-  let d = points.map((p,i)=> (i?"L":"M") + sx(xs[i]).toFixed(1) + "," + sy(ys[i]).toFixed(1)).join(" ");
+  CHART.xs = xs; CHART.sx = sx; CHART.sy = sy; CHART.y0 = y0; CHART.y1 = y1;
+  const obs = points.map((p,i)=> (i?"L":"M") + sx(xs[i]).toFixed(1) + "," + sy(p.value).toFixed(1)).join(" ");
   // Transparent per-point hit circles: targets for the slider's flagging and for
   // the click-to-trace (Feature C). Flagged markers and the guide line are filled
   // in by applyThreshold().
   const hits = points.map((p,i)=>
-    `<circle class="pt" data-i="${i}" cx="${sx(xs[i]).toFixed(1)}" cy="${sy(ys[i]).toFixed(1)}" r="5" fill="transparent"/>`
+    `<circle class="pt" data-i="${i}" cx="${sx(xs[i]).toFixed(1)}" cy="${sy(p.value).toFixed(1)}" r="5" fill="transparent"/>`
   ).join("");
+  // Feature D: dashed projection in the reserved forecast token, anchored to the
+  // last real point so it visibly continues the observed line.
+  let fcPath = "";
+  if(fc.length){
+    const seg = points.slice(-1).concat(fc);
+    const d = seg.map((p,i)=> (i?"L":"M") + sx(new Date(p.date_time_utc).getTime()).toFixed(1) + "," + sy(p.value).toFixed(1)).join(" ");
+    fcPath = `<path d="${d}" fill="none" stroke="var(--forecast)" stroke-width="2" stroke-dasharray="6 5"/>`;
+  }
   svg.innerHTML =
     `<line id="thLine" x1="${pad}" x2="${W-pad}" y1="0" y2="0" stroke="var(--warn)" ` +
       `stroke-width="1" stroke-dasharray="4 3" opacity="0"/>` +
-    `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>` +
+    `<path d="${obs}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>` +
+    fcPath +
     `<g id="marks"></g>` + hits +
-    `<circle cx="${sx(xs[xs.length-1]).toFixed(1)}" cy="${sy(ys[ys.length-1]).toFixed(1)}" ` +
+    `<circle cx="${sx(xs[xs.length-1]).toFixed(1)}" cy="${sy(points[points.length-1].value).toFixed(1)}" ` +
       `r="4" fill="var(--accent)" pointer-events="none"/>`;
   const last = points[points.length-1];
   document.getElementById("chartMeta").textContent =
     `${last.value} ${unit} · ${points.length} readings · range ${y0.toFixed(2)} to ${y1.toFixed(2)} ${unit}`;
+  if(curThreshold != null) applyThreshold(curThreshold);
 }
 
 // Feature B: re-flag every charted reading above `th`, client-side, live.
 function applyThreshold(th){
   if(!CHART) return;
+  curThreshold = th;
   const { points, xs, sx, sy, unit, y0, y1 } = CHART;
   let n = 0, marks = "";
   points.forEach((p,i) => {
@@ -396,8 +438,13 @@ async function load(){
       const c = primary.change_24h;
       document.getElementById("mChange").textContent = (c>0?"+":"") + (c==null?"n/a":c+" "+unit);
       const series = (gold.series||[]).filter(p=>p.station_reference===(primary.station_reference));
-      drawChart(series, unit);
+      const forecast = (gold.forecast||{})[primary.station_reference] || [];
+      CHART = { points: series, unit, forecast };
+      drawChart();
       initThreshold(primary);
+      // Feature D: replace the static caveat with the method string published
+      // alongside the forecast, so the honest limitation has one source of truth.
+      if(gold.forecast_method) document.getElementById("fcNote").textContent = gold.forecast_method;
     }
     if(meta){
       document.getElementById("liveLabel").textContent = "updated " + fmtAgo(meta.last_run_utc);
@@ -417,6 +464,15 @@ document.getElementById("chart").addEventListener("click", e => {
   if(t.classList && t.classList.contains("pt")){
     showTrace(parseInt(t.getAttribute("data-i"), 10));
   }
+});
+
+// Feature D: flip the dashed forecast overlay. It's a native <button>, so Enter
+// and Space already fire click; no extra key handler (that would double-toggle).
+const fcToggle = document.getElementById("fcToggle");
+fcToggle.addEventListener("click", () => {
+  showForecast = !showForecast;
+  fcToggle.setAttribute("aria-checked", String(showForecast));
+  drawChart();
 });
 
 load();
