@@ -1,0 +1,36 @@
+{
+  "_comment": "W6 - ADF pipeline ARTIFACT (evidence-only). Demonstrates Azure Data Factory as a real, version-controlled pipeline that copies the EA 'latest level readings' feed to ADLS as Parquet. Run ON DEMAND only (no scheduled integration runtime) so it costs ~nothing. Import into Data Factory Studio, or deploy via the linked services + this pipeline JSON. Replace <account> in the linked service.",
+
+  "_landing_path_note": "Lands at lake/evidence/adf/, deliberately OUTSIDE lake/bronze/** - the dbt bronze glob is abfss://lake/bronze/**/*.parquet, and these raw EA-shaped files have no minted reading_id, so landing them in bronze/ would pollute silver and break the trace. This copy proves ADF works; it does not feed the medallion flow (the Azure Function owns real ingest).",
+
+  "name": "pl_copy_ea_levels_to_bronze",
+  "properties": {
+    "activities": [
+      {
+        "name": "CopyLatestLevels",
+        "type": "Copy",
+        "policy": { "timeout": "0.00:10:00", "retry": 1 },
+        "typeProperties": {
+          "source": {
+            "type": "RestSource",
+            "httpRequestTimeout": "00:01:40",
+            "requestInterval": "00.00:00:00.010"
+          },
+          "sink": {
+            "type": "ParquetSink",
+            "storeSettings": { "type": "AzureBlobFSWriteSettings" }
+          }
+        },
+        "inputs": [
+          { "referenceName": "ds_ea_readings_rest", "type": "DatasetReference" }
+        ],
+        "outputs": [
+          { "referenceName": "ds_evidence_parquet", "type": "DatasetReference" }
+        ]
+      }
+    ],
+    "_linkedServicesNote": "ls_ea_rest: REST linked service, baseUrl https://environment.data.gov.uk/flood-monitoring/ , anonymous auth. ls_adls: Azure Data Lake Storage Gen2 linked service to <account>, system-assigned managed identity.",
+    "_datasetsNote": "ds_ea_readings_rest: RestResource on ls_ea_rest, relativeUrl 'data/readings?latest&parameter=level&_view=full'. ds_evidence_parquet: Parquet on ls_adls, folder 'lake/evidence/adf/', file 'levels_@{utcnow()}.parquet'.",
+    "annotations": ["portfolio", "evidence-only", "run-on-demand"]
+  }
+}
