@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UK River Levels (live) · Reece Wall</title>
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<meta name="theme-color" content="#0E5B54">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./tokens.css">
@@ -15,10 +17,13 @@
     background-image:radial-gradient(circle at 1px 1px, rgba(14,91,84,.04) 1px, transparent 0);
     background-size:22px 22px;
   }
-  .wrap{max-width:880px; margin:0 auto; padding:42px 22px 60px}
-  /* nav */
+  .wrap{max-width:896px; margin:0 auto; padding:42px 24px 60px}
+  /* nav: matches the reecewall.dev hub (RW pill left, links right) */
   nav{display:flex; justify-content:space-between; align-items:center; margin-bottom:34px}
-  .word{font-family:'Lora',serif; font-size:20px; font-weight:600}
+  .logo{font-family:'Lora',serif; font-size:14px; font-weight:600; line-height:1;
+    color:var(--paper); background:var(--accent); padding:6px 12px; border-radius:999px;
+    text-decoration:none}
+  .logo:hover{background:var(--accent-deep)}
   nav .links{display:flex; gap:20px; font-size:13.5px; color:#5f5b54}
   nav .links a{color:inherit; text-decoration:none}
   nav .links a:hover{color:var(--accent)}
@@ -115,8 +120,8 @@
 <body>
 <div class="wrap">
   <nav>
-    <span class="word">Reece&nbsp;Wall</span>
-    <span class="links"><a href="/">Work</a><a href="/cv">CV</a><a href="/about">About</a></span>
+    <a class="logo" href="https://reecewall.dev" aria-label="Reece Wall, home">RW</a>
+    <span class="links"><a href="https://reecewall.dev">Work</a><a href="https://reecewall.dev/cv">CV</a><a href="https://reecewall.dev/about">About</a></span>
   </nav>
 
   <div class="head">
