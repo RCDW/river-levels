@@ -1,0 +1,9 @@
+# Normalise line endings: store text as LF in the repo, check out native.
+* text=auto
+
+# Keep genuinely-binary assets untouched (no EOL or diff munging).
+# SVG is intentionally omitted: it is text, and normalising to LF keeps
+# favicon.svg byte-identical to the LF copy already committed (the hub asset).
+*.png   binary
+*.ico   binary
+*.parquet binary

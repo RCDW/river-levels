@@ -49,9 +49,17 @@
   .panel{background:#fff; border:0.5px solid var(--hair); border-radius:12px; padding:18px 20px; margin-top:14px}
   .panel h2{font-size:13px; font-weight:600}
   .panel .meta{font-size:11.5px; color:var(--soft)}
-  svg.chart{width:100%; height:170px; display:block; margin-top:8px}
+  svg.chart{width:100%; height:170px; display:block}
   svg.chart circle.pt{cursor:pointer}
-  .axis{font-size:10px; fill:var(--soft)}
+  /* axis labels live in HTML, not the SVG: the chart uses
+     preserveAspectRatio="none", which would stretch SVG <text>. */
+  .chartwrap{display:flex; gap:8px; margin-top:8px}
+  .chartwrap svg.chart{flex:1; min-width:0}
+  .yaxis{display:flex; flex-direction:column; justify-content:space-between;
+    height:170px; padding:14px 0; width:34px; flex:none; text-align:right;
+    white-space:nowrap; font-size:10px; color:var(--soft)}
+  .xaxis{display:flex; justify-content:space-between; margin-top:4px;
+    padding-left:42px; font-size:10px; color:var(--soft)}
   /* B: anomaly threshold slider */
   .thresh{margin-top:14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap}
   .thresh label{font-size:12px; color:var(--muted); white-space:nowrap}
@@ -143,8 +151,12 @@
   <div class="panel">
     <h2 id="chartTitle">River Trent at Nottingham</h2>
     <div class="meta" id="chartMeta">loading…</div>
-    <svg class="chart" id="chart" viewBox="0 0 600 170" preserveAspectRatio="none" role="img"
-         aria-label="River level over the recent window"></svg>
+    <div class="chartwrap">
+      <div class="yaxis"><span id="yMax">-</span><span id="yMin">-</span></div>
+      <svg class="chart" id="chart" viewBox="0 0 600 170" preserveAspectRatio="none" role="img"
+           aria-label="River level over the recent window"></svg>
+    </div>
+    <div class="xaxis"><span id="xStart">-</span><span id="xEnd">-</span></div>
     <!-- B: anomaly threshold slider: pure client-side re-flagging of the series -->
     <div class="thresh">
       <label for="thSlider">Anomaly threshold</label>
@@ -207,6 +219,18 @@ function fmtAgo(iso){
   return Math.round(mins/60) + " h ago";
 }
 
+// Series/forecast times are UTC wall-clock without a zone marker ("...T16:15:00"
+// or "... 16:30:00"). Reformat the string directly and label it UTC: a Date parse
+// would read them as local time and shift the hour, which is the BST/UTC
+// confusion this is meant to avoid.
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtUTC(s){
+  const [date, time=""] = String(s).split(/[ T]/);
+  const [, m, d] = date.split("-");
+  const [hh, mm] = time.split(":");
+  return `${+d} ${MON[+m - 1]} ${hh}:${mm} UTC`;
+}
+
 // Feature A: render the real run metadata into the health panel. The pipeline
 // publishes only after a green dbt test (last-known-good), so a failed run never
 // overwrites this; when the latest run failed, the panel keeps showing the last
@@ -253,6 +277,17 @@ function renderHealth(meta){
       `Last successful run was ${fmtAgo(meta.last_run_utc)}. The scheduled refresh ` +
       `runs every 3 h, so this may be stale; showing last-known-good data.`;
   }
+}
+
+// Keep the freshness signal honest while the page sits open: re-derive the
+// "updated X ago" badge and re-run the health panel from the same timestamp, so
+// staleness shows without a manual refresh. fmtAgo was previously called once at
+// load, freezing the badge.
+let META = null;
+function refreshFreshness(){
+  if(!META) return;
+  document.getElementById("liveLabel").textContent = "updated " + fmtAgo(META.last_run_utc);
+  renderHealth(META);
 }
 
 // Chart state, kept so the anomaly slider (Feature B) can re-flag points without
@@ -307,6 +342,14 @@ function drawChart(){
   const last = points[points.length-1];
   document.getElementById("chartMeta").textContent =
     `${last.value} ${unit} · ${points.length} readings · range ${y0.toFixed(2)} to ${y1.toFixed(2)} ${unit}`;
+  // Axis labels: y spans the plotted range; x spans the plotted domain, which
+  // extends into the forecast when it is toggled on (observations are first, the
+  // forecast is future, so the ends are points[0] and the last drawn point).
+  document.getElementById("yMax").textContent = y1.toFixed(2);
+  document.getElementById("yMin").textContent = y0.toFixed(2);
+  const lastPt = fc.length ? fc[fc.length-1] : points[points.length-1];
+  document.getElementById("xStart").textContent = fmtUTC(points[0].date_time_utc);
+  document.getElementById("xEnd").textContent = fmtUTC(lastPt.date_time_utc);
   if(curThreshold != null) applyThreshold(curThreshold);
 }
 
@@ -540,8 +583,8 @@ async function load(){
       if(gold.forecast_method) document.getElementById("fcNote").textContent = gold.forecast_method;
     }
     if(meta){
-      document.getElementById("liveLabel").textContent = "updated " + fmtAgo(meta.last_run_utc);
-      renderHealth(meta);
+      META = meta;
+      refreshFreshness();
       if(meta.attribution) document.getElementById("attribution").textContent =
         meta.attribution + " · Built by Reece Wall · dbt + DuckDB on a free schedule";
     }
@@ -569,6 +612,7 @@ fcToggle.addEventListener("click", () => {
 });
 
 load();
+setInterval(refreshFreshness, 60000); // tick "updated X ago" without a refresh
 </script>
 </body>
 </html>
