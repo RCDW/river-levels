@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>UK River Levels (live) · Reece Wall</title>
+<title>UK River Levels · Reece Wall</title>
 <link rel="icon" type="image/svg+xml" href="./favicon.svg">
 <meta name="theme-color" content="#0E5B54">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -80,12 +80,6 @@
   .fctoggle:focus-visible{outline:2px solid var(--forecast); outline-offset:3px; border-radius:4px}
   .fclabel{font-size:12px; color:var(--muted); white-space:nowrap}
   .fcnote{flex-basis:100%; font-size:11px; color:var(--soft)}
-  /* staged feature rows */
-  .stage{display:flex; align-items:center; gap:11px; background:var(--card);
-    border-radius:9px; padding:11px 14px; margin-top:10px; font-size:13px}
-  .tag{font-size:10px; font-weight:600; color:var(--pill-ink); background:var(--pill-bg);
-    padding:2px 9px; border-radius:20px; white-space:nowrap}
-  .stage .soon{margin-left:auto; font-size:11px; color:var(--soft)}
   /* A: pipeline health panel */
   .health .h{display:flex; align-items:center; justify-content:space-between; gap:10px}
   .health .h h2{display:flex; align-items:center; gap:8px}
@@ -134,7 +128,7 @@
 
   <div class="head">
     <div>
-      <h1>UK River Levels (live)</h1>
+      <h1>UK River Levels</h1>
       <div class="sub">Environment Agency open data · River Trent, Nottingham</div>
     </div>
     <span class="badge"><span class="dot"></span><span id="liveLabel">live</span></span>
@@ -183,7 +177,7 @@
        is kept as a graceful fallback when the engine can't load. -->
   <div class="panel trace" id="tracePanel">
     <div class="h">
-      <h2>Click-to-trace <span class="tag">C</span></h2>
+      <h2>Click-to-trace</h2>
       <span class="tmeta" id="traceMeta"></span>
     </div>
     <div class="tcards" id="traceCards"></div>
@@ -195,7 +189,7 @@
   <!-- A: pipeline health panel (real run metadata from run_meta.json) -->
   <div class="panel health">
     <div class="h">
-      <h2>Pipeline health <span class="tag">A</span></h2>
+      <h2>Pipeline health</h2>
       <span class="hstatus" id="hStatus">checking…</span>
     </div>
     <div class="hgrid" id="hGrid"></div>
