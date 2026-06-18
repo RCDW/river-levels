@@ -5,5 +5,5 @@ dbt-duckdb>=1.9
 duckdb>=1.1
 numpy>=1.26
 sqlfluff>=3.2
-sqlfluff-templater-dbt>=3.2
+sqlfluff-templater-dbt>=4.2.2
 ruff>=0.6
