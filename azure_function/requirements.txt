@@ -1,7 +1,7 @@
 azure-functions
 azure-identity>=1.16
 azure-storage-blob>=12.19
-requests>=2.31
+requests>=2.34.2
 pandas>=2.1
 pyarrow>=15.0
 PyYAML>=6.0
