@@ -1,7 +1,7 @@
 # Pipeline + lint toolchain used by CI (and local dev). Runtime ingest deps
 # live in ingest/requirements.txt. Dependabot tracks both; dbt-core is grouped
 # with dbt-duckdb so a major release can never land them in separate PRs.
-dbt-duckdb>=1.9
+dbt-duckdb>=1.10.1
 duckdb>=1.1
 numpy>=1.26
 sqlfluff>=3.2
