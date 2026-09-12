@@ -1,0 +1,29 @@
+{
+  "last_run_utc": "2026-09-11T03:00:00Z",
+  "rows_ingested": 126,
+  "silver_rows": 47115,
+  "stations": 4,
+  "above_threshold": 0,
+  "tests_passed": 11,
+  "tests_total": 11,
+  "stages": [
+    {
+      "name": "ingest",
+      "status": "ok"
+    },
+    {
+      "name": "dbt build",
+      "status": "ok"
+    },
+    {
+      "name": "dbt test",
+      "status": "ok"
+    },
+    {
+      "name": "publish",
+      "status": "ok"
+    }
+  ],
+  "status": "ok",
+  "attribution": "this uses Environment Agency flood and river level data from the real-time data API (Beta)"
+}
